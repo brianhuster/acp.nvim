@@ -102,8 +102,41 @@ func (c *acpClientImpl) SessionUpdate(ctx context.Context, params acp.SessionNot
 		}
 	case u.ToolCall != nil:
 		c.session.appendToBuffer(fmt.Sprintf("\n🔧 %s (%s)\n", u.ToolCall.Title, u.ToolCall.Status))
+
+		// Display tool call content if available
+		for _, tc := range u.ToolCall.Content {
+			if tc.Content != nil && tc.Content.Content.Text != nil {
+				c.session.appendToBuffer(tc.Content.Content.Text.Text)
+			}
+			if tc.Diff != nil {
+				// Use vim.diff to generate a proper unified diff
+				c.session.showDiff(tc.Diff.Path, tc.Diff.OldText, tc.Diff.NewText)
+			}
+		}
 	case u.ToolCallUpdate != nil:
-		c.session.appendToBuffer(fmt.Sprintf("\n🔧 Tool call `%s` updated: %v\n", u.ToolCallUpdate.ToolCallId, u.ToolCallUpdate.Status))
+		// Only show status updates if there's meaningful content or a title change
+		hasContent := len(u.ToolCallUpdate.Content) > 0
+		hasTitle := u.ToolCallUpdate.Title != nil
+
+		if hasTitle && u.ToolCallUpdate.Status != nil {
+			c.session.appendToBuffer(fmt.Sprintf("\n🔧 %s (%s)\n", *u.ToolCallUpdate.Title, *u.ToolCallUpdate.Status))
+		} else if hasTitle {
+			c.session.appendToBuffer(fmt.Sprintf("\n🔧 %s\n", *u.ToolCallUpdate.Title))
+		} else if u.ToolCallUpdate.Status != nil && hasContent {
+			// Only show status if there's content to display
+			c.session.appendToBuffer(fmt.Sprintf("\n🔧 %s\n", *u.ToolCallUpdate.Status))
+		}
+
+		// Display content updates if available
+		for _, tc := range u.ToolCallUpdate.Content {
+			if tc.Content != nil && tc.Content.Content.Text != nil {
+				c.session.appendToBuffer(tc.Content.Content.Text.Text)
+			}
+			if tc.Diff != nil {
+				// Use vim.diff to generate a proper unified diff
+				c.session.showDiff(tc.Diff.Path, tc.Diff.OldText, tc.Diff.NewText)
+			}
+		}
 	case u.Plan != nil:
 		c.session.appendToBuffer("[Plan update]\n")
 	case u.AgentThoughtChunk != nil:
@@ -362,6 +395,44 @@ func (s *ACPSession) cleanup() {
 
 func (s *ACPSession) appendToBuffer(text string) {
 	s.nvim.ExecLua(`require('agent-chat').append_text(...)`, nil, s.bufnr, text)
+}
+
+func (s *ACPSession) showDiff(path string, oldText *string, newText string) {
+	var diffLines []string
+	err := s.nvim.ExecLua(`
+		local old = select(1, ...)
+		local new = select(2, ...)
+		local path = select(3, ...)
+		
+		local old_lines = old and vim.split(old, '\n', { plain = true }) or {}
+		local new_lines = vim.split(new, '\n', { plain = true })
+		
+		local diff = vim.diff(table.concat(old_lines, '\n'), table.concat(new_lines, '\n'), {
+			result_type = 'unified',
+			ctxlen = 3,
+		})
+		
+		if diff then
+			return vim.split(diff, '\n', { plain = true })
+		else
+			return {}
+		end
+	`, &diffLines, oldText, newText, path)
+
+	if err != nil {
+		log.Printf("Error generating diff: %v\n", err)
+		s.appendToBuffer(fmt.Sprintf("\n[Modified: %s]\n", path))
+		return
+	}
+
+	if len(diffLines) > 0 {
+		s.appendToBuffer("\n```diff\n")
+		s.appendToBuffer(fmt.Sprintf("--- %s\n+++ %s\n", path, path))
+		for _, line := range diffLines {
+			s.appendToBuffer(line + "\n")
+		}
+		s.appendToBuffer("```\n")
+	}
 }
 
 func min(a, b int) int {
