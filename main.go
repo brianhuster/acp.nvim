@@ -392,7 +392,7 @@ func (s *ACPSession) cleanup() {
 }
 
 func (s *ACPSession) appendToBuffer(text string) {
-	s.nvim.ExecLua(`require('agent-chat').append_text(...)`, nil, s.bufnr, text)
+	s.nvim.ExecLua(`require('acp').append_text(...)`, nil, s.bufnr, text)
 }
 
 func (s *ACPSession) showDiff(path string, oldText *string, newText string) {
