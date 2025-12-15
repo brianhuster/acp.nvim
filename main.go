@@ -18,7 +18,6 @@ import (
 // ACPSession represents a single ACP session tied to a buffer
 type ACPSession struct {
 	bufnr          int
-	nvim           *nvim.Nvim
 	conn           *acp.ClientSideConnection
 	sessionID      acp.SessionId
 	ctx            context.Context
@@ -29,7 +28,6 @@ type ACPSession struct {
 
 // SessionManager manages multiple ACP sessions
 type SessionManager struct {
-	nvim     *nvim.Nvim
 	mu       sync.Mutex
 	sessions map[int]*ACPSession
 }
@@ -38,7 +36,7 @@ type acpClientImpl struct {
 	session *ACPSession
 }
 
-var _ acp.Client = (*acpClientImpl)(nil)
+var vim *nvim.Nvim
 
 // RequestPermission handles permission requests from ACP
 func (c *acpClientImpl) RequestPermission(ctx context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
@@ -69,9 +67,9 @@ func (c *acpClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 	}
 
 	var choice int
-	err := c.session.nvim.Call("inputlist", &choice, promptLines)
+	err := vim.Call("inputlist", &choice, promptLines)
 	if err != nil {
-		log.Printf("Error calling inputlist: %v\n", err)
+		log.Printf("Error calling inputlist: %v", err)
 		return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
 	}
 
@@ -228,7 +226,6 @@ func (m *SessionManager) ACPStart(bufnr int, agent_cmd []string, opts map[string
 
 	session := &ACPSession{
 		bufnr:       bufnr,
-		nvim:        m.nvim,
 		autoApprove: false,
 	}
 
@@ -302,7 +299,7 @@ func (m *SessionManager) ACPStart(bufnr int, agent_cmd []string, opts map[string
 	}
 	session.sessionID = newSess.SessionId
 
-	m.nvim.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]acp.SessionModeState{ "modes" : *newSess.Modes})
+	vim.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]acp.SessionModeState{ "modes" : *newSess.Modes})
 	
 	m.sessions[bufnr] = session
 	return nil, nil
@@ -414,7 +411,7 @@ func (s *ACPSession) cleanup() {
 }
 
 func (s *ACPSession) appendToBuffer(text string) {
-	err := s.nvim.ExecLua(`return require('acp').append_text(...)`, nil, s.bufnr, text)
+	err := vim.ExecLua(`return require('acp').append_text(...)`, nil, s.bufnr, text)
 	if err != nil {
 		log.Printf("Error appending to buffer: %v\n", err)
 	}
@@ -427,7 +424,7 @@ func (s *ACPSession) showDiff(path string, oldText *string, newText string) {
 	}
 
 	var diff string
-	err := s.nvim.ExecLua(`return vim.text.diff(...)`, &diff, old, newText)
+	err := vim.ExecLua(`return vim.text.diff(...)`, &diff, old, newText)
 
 	if err != nil {
 		log.Printf("Error generating diff: %v\n", err)
@@ -464,29 +461,29 @@ func main() {
 	// Redirect the application's direct use of stdout to stderr.
 	stdout := os.Stdout
 	os.Stdout = os.Stderr
+	var err error
 
 	// Create a client connected to stdio. Configure the client to use the
 	// standard log package for logging.
-	v, err := nvim.New(os.Stdin, stdout, stdout, log.Printf)
+	vim, err = nvim.New(os.Stdin, stdout, stdout, log.Printf)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Create session manager
 	manager := &SessionManager{
-		nvim:     v,
 		sessions: make(map[int]*ACPSession),
 	}
 
 	// Register RPC handlers
-	v.RegisterHandler("ACPStart", manager.ACPStart)
-	v.RegisterHandler("ACPStop", manager.ACPStop)
-	v.RegisterHandler("ACPSendPrompt", manager.ACPSendPrompt)
-	v.RegisterHandler("ACPCancel", manager.ACPCancel)
-	v.RegisterHandler("ACPSetMode", manager.ACPSetMode)
+	vim.RegisterHandler("ACPStart", manager.ACPStart)
+	vim.RegisterHandler("ACPStop", manager.ACPStop)
+	vim.RegisterHandler("ACPSendPrompt", manager.ACPSendPrompt)
+	vim.RegisterHandler("ACPCancel", manager.ACPCancel)
+	vim.RegisterHandler("ACPSetMode", manager.ACPSetMode)
 
 	// Serve RPC requests
-	if err := v.Serve(); err != nil {
+	if err := vim.Serve(); err != nil {
 		log.Fatal(err)
 	}
 }

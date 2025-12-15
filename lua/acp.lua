@@ -305,10 +305,10 @@ function M.acpstart_complete()
 end
 
 function M.acpsetmode_complete()
-	local buf = vim.api.nvim_get_current_buf()
-	return vim.iter(M.state.sessions[buf].modes.AvailableModes):map(function(mode)
-		return mode.Id
-	end):join("\n")
+    local buf = vim.api.nvim_get_current_buf()
+    return vim.iter(M.state.sessions[buf].modes.AvailableModes):map(function(mode)
+        return mode.Id
+    end):join("\n")
 end
 
 return M
