@@ -7,3 +7,5 @@ end, {
     desc = "Start ACP connection and open chat window.",
 	complete = "custom,v:lua.require'acp'.acpstart_complete"
 })
+
+vim.treesitter.language.register("markdown", "acpchat")

@@ -95,7 +95,7 @@ end
 
 -- Stop the ACP connection for a buffer
 ---@param bufnr number
-local function stop(bufnr)
+function M.stop(bufnr)
 	if not M.state.sessions[bufnr] then
 		vim.notify("No ACP session in this buffer", vim.log.levels.WARN)
 		return
@@ -125,7 +125,7 @@ end
 --- Only called from Go
 --- @param bufnr number
 --- @param mode_id string
-local function set_mode(bufnr, mode_id)
+function M.set_mode(bufnr, mode_id)
 	local ok, result = pcall(vim.rpcrequest, M.state.rpc_host_job_id, "ACPSetMode", bufnr, mode_id)
 	if not ok then
 		vim.notify("Failed to set ACP mode: " .. vim.inspect(result), vim.log.levels.ERROR)
@@ -137,10 +137,6 @@ end
 -- Show the ACP buffer in a window
 ---@param bufnr number
 local function show(bufnr)
-    if bufnr == 0 then
-        bufnr = vim.api.nvim_get_current_buf()
-    end
-
     if not vim.api.nvim_buf_is_valid(bufnr) then
         vim.notify("Invalid buffer", vim.log.levels.ERROR)
         return
@@ -175,7 +171,7 @@ end
 -- Send a prompt to agent
 ---@param bufnr number
 ---@param text string
-local function send_prompt(bufnr, text)
+function M.send_prompt(bufnr, text)
 	if not M.state.rpc_host_job_id then
 		vim.notify("ACP not running. Run :AcpStart first.", vim.log.levels.ERROR)
 		return
@@ -197,46 +193,9 @@ end
 ---@param bufnr number
 ---@param opts { modes: acpSessionModes }
 function M.set_and_show_prompt_buf(bufnr, opts)
-	vim.bo[bufnr].buftype = "prompt"
-	vim.bo[bufnr].bufhidden = "hide"
-	vim.bo[bufnr].swapfile = false
-	vim.bo[bufnr].filetype = "markdown"
-
-	M.state.sessions[bufnr].modes = opts.modes
-
-	vim.fn.prompt_setprompt(bufnr, "> ")
-	vim.fn.prompt_setcallback(bufnr, function(text)
-		M.append_text(bufnr, "\n\n")
-		send_prompt(bufnr, text)
-	end)
-
-	vim.fn.prompt_setinterrupt(bufnr, function()
-		M.cancel(bufnr)
-	end)
-
 	show(bufnr)
-
-	local bufcommand = vim.api.nvim_buf_create_user_command
-
-	bufcommand(bufnr, "AcpSetMode", function(cmd)
-		set_mode(bufnr, cmd.args)
-	end, {
-		nargs = 1,
-		desc = "Set ACP mode for this buffer",
-		complete = "custom,v:lua.require'acp'.acpsetmode_complete"
-	})
-
-	bufcommand(bufnr, "AcpStop", function()
-		stop(bufnr)
-	end, { desc = "Stop ACP connection for current buffer" })
-
-	-- Auto-cleanup when buffer is deleted
-	vim.api.nvim_create_autocmd("BufDelete", {
-		buffer = bufnr,
-		callback = function(args)
-			stop(args.buf)
-		end
-	})
+	vim.bo[bufnr].filetype = "acpchat"
+	M.state.sessions[bufnr].modes = opts.modes
 end
 
 -- Cancel the current operation

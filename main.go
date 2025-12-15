@@ -299,8 +299,12 @@ func (m *SessionManager) ACPStart(bufnr int, agent_cmd []string, opts map[string
 	}
 	session.sessionID = newSess.SessionId
 
-	vim.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]acp.SessionModeState{ "modes" : *newSess.Modes})
-	
+	modes := acp.SessionModeState{}
+	if newSess.Modes != nil {
+		modes = *newSess.Modes
+	}
+	vim.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]acp.SessionModeState{"modes": modes})
+
 	m.sessions[bufnr] = session
 	return nil, nil
 }

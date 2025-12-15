@@ -1,0 +1,65 @@
+local bufnr = vim.api.nvim_get_current_buf()
+local acp = require("acp")
+local bufcommand = vim.api.nvim_buf_create_user_command
+
+vim.bo[bufnr].buftype = "prompt"
+vim.bo[bufnr].bufhidden = "hide"
+vim.bo[bufnr].swapfile = false
+
+vim.treesitter.start(bufnr)
+
+vim.fn.prompt_setprompt(bufnr, "\027]133;A\a ")
+vim.fn.prompt_setcallback(bufnr, function(text)
+	acp.append_text(bufnr, "\n🤖 ")
+	acp.send_prompt(bufnr, text)
+end)
+vim.fn.prompt_setinterrupt(bufnr, function()
+	acp.cancel(bufnr)
+end)
+
+bufcommand(bufnr, "AcpSetMode", function(cmd)
+	acp.set_mode(bufnr, cmd.args)
+end, {
+	nargs = 1,
+	desc = "Set ACP mode for this buffer",
+	complete = "custom,v:lua.require'acp'.acpsetmode_complete"
+})
+bufcommand(bufnr, "AcpStop", function()
+	acp.stop(bufnr)
+end, { desc = "Stop ACP connection for current buffer" })
+
+-- Auto-cleanup when buffer is deleted
+local auid = vim.api.nvim_create_autocmd("BufDelete", {
+	buffer = bufnr,
+	callback = function(args)
+		acp.stop(args.buf)
+	end
+})
+
+-- Highlight all lines started with the prompt OCP `"\027]133;A\a` as sign ▶
+vim.schedule(function()
+	vim.cmd [[
+		setl conceallevel=2
+		setl concealcursor=nivc
+		syntax match Conceal /\%x1b]133;A\%x07/ conceal cchar=▶
+	]]
+end)
+
+vim.keymap.set("n", "[[", function()
+	vim.fn.search([[^\%x1b]133;A\%x07]], "b")
+end, { buffer = bufnr, desc = "Go to previous prompt" })
+
+vim.keymap.set("n", "]]", function()
+	vim.fn.search([[^\%x1b]133;A\%x07]])
+end, { buffer = bufnr, desc = "Go to next prompt" })
+
+vim.b.undo_ftplugin = table.concat({
+    vim.b.undo_ftplugin or "",
+	"setlocal buftype< bufhidden< swapfile< conceallevel< concealcursor",
+    "delcommand -buffer AcpSetMode",
+	"delcommand -buffer AcpStop",
+    "call nvim_del_autocmd(" .. auid .. ")",
+    "lua vim.treesitter.stop(" .. bufnr .. ")",
+	"nunmap <buffer> [[",
+	"nunmap <buffer> ]]",
+}, "\n")
