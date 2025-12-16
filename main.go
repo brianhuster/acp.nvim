@@ -427,22 +427,6 @@ func (m *SessionManager) AcpNewSession(bufnr int, agent_cmd []string, opts AcpNe
 	return nil, nil
 }
 
-// AcpStop closes the ACP connection for a buffer
-func (m *SessionManager) AcpStop(bufnr int) (any, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	session, exists := m.sessions[bufnr]
-	if !exists {
-		return nil, fmt.Errorf("no ACP session for buffer %d", bufnr)
-	}
-
-	session.cleanup()
-	session.appendToBuffer("Connection closed.\n")
-	delete(m.sessions, bufnr)
-	return nil, nil
-}
-
 func (m *SessionManager) AcpSendPrompt(bufnr int, prompt string) (any, error) {
 	if prompt == "" {
 		return nil, fmt.Errorf("no prompt provided")
@@ -599,7 +583,6 @@ func main() {
 
 	// Register RPC handlers
 	vim.RegisterHandler("AcpNewSession", manager.AcpNewSession)
-	vim.RegisterHandler("AcpStop", manager.AcpStop)
 	vim.RegisterHandler("AcpSendPrompt", manager.AcpSendPrompt)
 	vim.RegisterHandler("AcpCancel", manager.AcpCancel)
 	vim.RegisterHandler("AcpSetMode", manager.AcpSetMode)

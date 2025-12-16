@@ -24,9 +24,6 @@ end, {
 	desc = "Set ACP mode for this buffer",
 	complete = "custom,v:lua.require'acp'.acpsetmode_complete"
 })
-bufcommand(bufnr, "AcpStop", function()
-	acp.stop(bufnr)
-end, { desc = "Stop ACP connection for current buffer" })
 
 -- Auto-cleanup when buffer is deleted
 local auid = vim.api.nvim_create_autocmd("BufDelete", {
@@ -57,7 +54,6 @@ vim.b.undo_ftplugin = table.concat({
     vim.b.undo_ftplugin or "",
 	"setlocal buftype< bufhidden< swapfile< conceallevel< concealcursor",
     "delcommand -buffer AcpSetMode",
-	"delcommand -buffer AcpStop",
     "call nvim_del_autocmd(" .. auid .. ")",
     "lua vim.treesitter.stop(" .. bufnr .. ")",
 	"nunmap <buffer> [[",

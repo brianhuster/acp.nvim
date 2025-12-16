@@ -121,34 +121,6 @@ function M.start(agent)
 	vim.rpcnotify(job_id, "AcpNewSession", bufnr, cmd, opts)
 end
 
--- Stop the ACP connection for a buffer
----@param bufnr number
-function M.stop(bufnr)
-	if not M.state.sessions[bufnr] then
-		vim.notify("No ACP session in this buffer", vim.log.levels.WARN)
-		return
-	end
-
-	if not M.state.rpc_host_job_id then
-		M.state.sessions[bufnr] = nil
-		return
-	end
-
-	-- Stop the session
-	local ok, err = pcall(vim.rpcrequest, M.state.rpc_host_job_id, "AcpStop", bufnr)
-	if not ok then
-		vim.notify("Failed to stop ACP session: " .. vim.inspect(err), vim.log.levels.ERROR)
-	end
-	M.state.sessions[bufnr] = nil
-
-	-- If no sessions left, optionally stop RPC host
-	if vim.tbl_count(M.state.sessions) == 0 then
-		vim.fn.jobstop(M.state.rpc_host_job_id)
-		M.state.rpc_host_job_id = nil
-	end
-
-	vim.notify("ACP session stopped", vim.log.levels.INFO)
-end
 --- Change ACP mode for a buffer
 --- Only called from Go
 --- @param bufnr number
