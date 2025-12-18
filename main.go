@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -36,7 +37,7 @@ type acpClientImpl struct {
 	session *AcpSession
 }
 
-var vim *nvim.Nvim
+var vim Vim
 
 // RequestPermission handles permission requests from ACP
 func (c *acpClientImpl) RequestPermission(ctx context.Context, params acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
@@ -59,17 +60,15 @@ func (c *acpClientImpl) RequestPermission(ctx context.Context, params acp.Reques
 		title = *params.ToolCall.Title
 	}
 
-	// Build the prompt list for inputlist()
-	// Format: ["Permission requested: <title>", "1. Option 1", "2. Option 2", ...]
-	promptLines := []string{fmt.Sprintf("Permission requested: %s", title)}
-	for i, opt := range params.Options {
-		promptLines = append(promptLines, fmt.Sprintf("%d. %s (%s)", i+1, opt.Name, opt.Kind))
+	opts := []string{}
+	for _, o := range params.Options {
+		opts = append(opts, o.Name)
 	}
 
-	var choice int
-	err := vim.Call("inputlist", &choice, promptLines)
+	choice, err := vim.uiSelect(opts, selectOpts{Title: fmt.Sprintf("Permission request: %s", title)})
+
 	if err != nil {
-		log.Printf("Error calling inputlist: %v", err)
+		fmt.Printf("Error displaying permission prompt: %v\n", err)
 		return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{Cancelled: &acp.RequestPermissionOutcomeCancelled{}}}, nil
 	}
 
@@ -151,17 +150,28 @@ func (c *acpClientImpl) WriteTextFile(ctx context.Context, params acp.WriteTextF
 	if !filepath.IsAbs(params.Path) {
 		return acp.WriteTextFileResponse{}, fmt.Errorf("path must be absolute: %s", params.Path)
 	}
-	dir := filepath.Dir(params.Path)
-	if dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return acp.WriteTextFileResponse{}, fmt.Errorf("mkdir %s: %w", dir, err)
+	buf, err := vim.bufnr(params.Path, false)
+	if err == nil && buf != -1 {
+		content := []byte(params.Content)
+		lines := bytes.Split(content, []byte("\n"))
+		if err := vim.api.SetBufferLines(buf, 0, -1, false, lines); err != nil {
+			return acp.WriteTextFileResponse{}, fmt.Errorf("set buffer lines for %s: %w", params.Path, err)
 		}
+		c.session.appendToBuffer(fmt.Sprintf("[Wrote %d bytes to buffer %s]\n", len(params.Content), params.Path))
+		return acp.WriteTextFileResponse{}, nil
+	} else {
+		dir := filepath.Dir(params.Path)
+		if dir != "" {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return acp.WriteTextFileResponse{}, fmt.Errorf("mkdir %s: %w", dir, err)
+			}
+		}
+		if err := os.WriteFile(params.Path, []byte(params.Content), 0o644); err != nil {
+			return acp.WriteTextFileResponse{}, fmt.Errorf("write %s: %w", params.Path, err)
+		}
+		c.session.appendToBuffer(fmt.Sprintf("[Wrote %d bytes to %s]\n", len(params.Content), params.Path))
+		return acp.WriteTextFileResponse{}, nil
 	}
-	if err := os.WriteFile(params.Path, []byte(params.Content), 0o644); err != nil {
-		return acp.WriteTextFileResponse{}, fmt.Errorf("write %s: %w", params.Path, err)
-	}
-	c.session.appendToBuffer(fmt.Sprintf("[Wrote %d bytes to %s]\n", len(params.Content), params.Path))
-	return acp.WriteTextFileResponse{}, nil
 }
 
 // ReadTextFile implements file reading capability
@@ -169,27 +179,48 @@ func (c *acpClientImpl) ReadTextFile(ctx context.Context, params acp.ReadTextFil
 	if !filepath.IsAbs(params.Path) {
 		return acp.ReadTextFileResponse{}, fmt.Errorf("path must be absolute: %s", params.Path)
 	}
-	b, err := os.ReadFile(params.Path)
-	if err != nil {
-		return acp.ReadTextFileResponse{}, fmt.Errorf("read %s: %w", params.Path, err)
-	}
-	content := string(b)
-	if params.Line != nil || params.Limit != nil {
-		lines := strings.Split(content, "\n")
-		start := 0
+	if buf, err := vim.bufnr(params.Path, false); err == nil && buf != -1 {
+		var start, end int
 		if params.Line != nil && *params.Line > 0 {
-			start = min(max(*params.Line-1, 0), len(lines))
+			start = *params.Line - 1
+		} else {
+			start = 0
 		}
-		end := len(lines)
 		if params.Limit != nil && *params.Limit > 0 {
-			if start+*params.Limit < end {
-				end = start + *params.Limit
-			}
+			end = start + *params.Limit
+		} else {
+			end = -1
 		}
-		content = strings.Join(lines[start:end], "\n")
+		lines, err := vim.api.BufferLines(buf, start, end, false)
+		if err != nil {
+			return acp.ReadTextFileResponse{}, fmt.Errorf("get buffer lines for %s: %w", params.Path, err)
+		}
+		content := string(bytes.Join(lines, []byte("\n")))
+		c.session.appendToBuffer(fmt.Sprintf("[Read %s (%d bytes) from buffer]\n", params.Path, len(content)))
+		return acp.ReadTextFileResponse{Content: content}, nil
+	} else {
+		b, err := os.ReadFile(params.Path)
+		if err != nil {
+			return acp.ReadTextFileResponse{}, fmt.Errorf("read %s: %w", params.Path, err)
+		}
+		content := string(b)
+		if params.Line != nil || params.Limit != nil {
+			lines := strings.Split(content, "\n")
+			start := 0
+			if params.Line != nil && *params.Line > 0 {
+				start = min(max(*params.Line-1, 0), len(lines))
+			}
+			end := len(lines)
+			if params.Limit != nil && *params.Limit > 0 {
+				if start+*params.Limit < end {
+					end = start + *params.Limit
+				}
+			}
+			content = strings.Join(lines[start:end], "\n")
+		}
+		c.session.appendToBuffer(fmt.Sprintf("[Read %s (%d bytes)]\n", params.Path, len(content)))
+		return acp.ReadTextFileResponse{Content: content}, nil
 	}
-	c.session.appendToBuffer(fmt.Sprintf("[Read %s (%d bytes)]\n", params.Path, len(content)))
-	return acp.ReadTextFileResponse{Content: content}, nil
 }
 
 // Terminal methods (no-op implementations)
@@ -216,93 +247,93 @@ func (c *acpClientImpl) KillTerminalCommand(ctx context.Context, params acp.Kill
 // SessionManager methods exposed to Lua
 
 type AcpNewSessionOpts struct {
-	Env map[string]string `json:"env" msgpack:"env"`
-	Mcp map[string]map[string]any   `json:"mcp" msgpack:"mcp"`
+	Env map[string]string         `json:"env" msgpack:"env"`
+	Mcp map[string]map[string]any `json:"mcp" msgpack:"mcp"`
 }
 
 func ConvertMcpConfigToMcpServer(name string, config map[string]any) (*acp.McpServer, error) {
-    // Detect transport type
-    t, _ := config["type"].(string)
+	// Detect transport type
+	t, _ := config["type"].(string)
 
-    switch t {
-    case "http", "sse":
-        // Map headers - initialize to empty slice to avoid nil
-        headers := make([]acp.HttpHeader, 0)
-        if rawHeaders, ok := config["headers"].(map[string]any); ok {
-            for k, v := range rawHeaders {
-                strVal, _ := v.(string)
-                headers = append(headers, acp.HttpHeader{Name: k, Value: strVal})
-            }
-        }
+	switch t {
+	case "http", "sse":
+		// Map headers - initialize to empty slice to avoid nil
+		headers := make([]acp.HttpHeader, 0)
+		if rawHeaders, ok := config["headers"].(map[string]any); ok {
+			for k, v := range rawHeaders {
+				strVal, _ := v.(string)
+				headers = append(headers, acp.HttpHeader{Name: k, Value: strVal})
+			}
+		}
 
-        serverName := name
-        if n, ok := config["name"].(string); ok {
-            serverName = n
-        }
+		serverName := name
+		if n, ok := config["name"].(string); ok {
+			serverName = n
+		}
 
-        if t == "http" {
-            return &acp.McpServer{
-                Http: &acp.McpServerHttp{
-                    Name:    serverName,
-                    Type:    "http",
-                    Url:     config["url"].(string),
-                    Headers: headers,
-                },
-            }, nil
-        } else { // sse
-            return &acp.McpServer{
-                Sse: &acp.McpServerSse{
-                    Name:    serverName,
-                    Type:    "sse",
-                    Url:     config["url"].(string),
-                    Headers: headers,
-                },
-            }, nil
-        }
+		if t == "http" {
+			return &acp.McpServer{
+				Http: &acp.McpServerHttp{
+					Name:    serverName,
+					Type:    "http",
+					Url:     config["url"].(string),
+					Headers: headers,
+				},
+			}, nil
+		} else { // sse
+			return &acp.McpServer{
+				Sse: &acp.McpServerSse{
+					Name:    serverName,
+					Type:    "sse",
+					Url:     config["url"].(string),
+					Headers: headers,
+				},
+			}, nil
+		}
 
-    default:
-        // Default to stdio
-        // Initialize to empty slice to avoid nil
-        args := make([]string, 0)
-        if cmdSlice, ok := config["cmd"].([]any); ok && len(cmdSlice) > 1 {
-            for _, a := range cmdSlice[1:] {
-                if str, ok := a.(string); ok {
-                    args = append(args, str)
-                }
-            }
-        }
+	default:
+		// Default to stdio
+		// Initialize to empty slice to avoid nil
+		args := make([]string, 0)
+		if cmdSlice, ok := config["cmd"].([]any); ok && len(cmdSlice) > 1 {
+			for _, a := range cmdSlice[1:] {
+				if str, ok := a.(string); ok {
+					args = append(args, str)
+				}
+			}
+		}
 
-        var command string
-        if cmdSlice, ok := config["cmd"].([]any); ok && len(cmdSlice) > 0 {
-            if str, ok := cmdSlice[0].(string); ok {
-                command = str
-            }
-        }
+		var command string
+		if cmdSlice, ok := config["cmd"].([]any); ok && len(cmdSlice) > 0 {
+			if str, ok := cmdSlice[0].(string); ok {
+				command = str
+			}
+		}
 
-        // Initialize to empty slice to avoid nil
-        env := make([]acp.EnvVariable, 0)
-        if rawEnv, ok := config["env"].(map[string]any); ok {
-            for k, v := range rawEnv {
-                if strVal, ok := v.(string); ok {
-                    env = append(env, acp.EnvVariable{Name: k, Value: strVal})
-                }
-            }
-        }
+		// Initialize to empty slice to avoid nil
+		env := make([]acp.EnvVariable, 0)
+		if rawEnv, ok := config["env"].(map[string]any); ok {
+			for k, v := range rawEnv {
+				if strVal, ok := v.(string); ok {
+					env = append(env, acp.EnvVariable{Name: k, Value: strVal})
+				}
+			}
+		}
 
-        serverName := name
-        if n, ok := config["name"].(string); ok {
-            serverName = n
-        }
+		serverName := name
+		if n, ok := config["name"].(string); ok {
+			serverName = n
+		}
 
-        return &acp.McpServer{
-            Stdio: &acp.McpServerStdio{
-                Name:    serverName,
-                Command: command,
-                Args:    args,
-                Env:     env,
-            },
-        }, nil
-    }
+		return &acp.McpServer{
+			Stdio: &acp.McpServerStdio{
+				Name:    serverName,
+				Command: command,
+				Args:    args,
+				Env:     env,
+			},
+		}, nil
+	}
 }
 
 // AcpNewSession initializes an ACP connection for a buffer
@@ -421,7 +452,7 @@ func (m *SessionManager) AcpNewSession(bufnr int, agent_cmd []string, opts AcpNe
 	if newSess.Modes != nil {
 		modes = *newSess.Modes
 	}
-	vim.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]any{"modes": modes, "session_id": session.sessionID})
+	vim.api.ExecLua(`require('acp').set_and_show_prompt_buf(...)`, nil, bufnr, map[string]any{"modes": modes, "session_id": session.sessionID})
 
 	m.sessions[bufnr] = session
 	return nil, nil
@@ -517,7 +548,7 @@ func (s *AcpSession) cleanup() {
 }
 
 func (s *AcpSession) appendToBuffer(text string) {
-	err := vim.ExecLua(`return require('acp').append_text(...)`, nil, s.bufnr, text)
+	err := vim.api.ExecLua(`return require('acp').append_text(...)`, nil, s.bufnr, text)
 	if err != nil {
 		log.Printf("Error appending to buffer: %v\n", err)
 	}
@@ -530,7 +561,7 @@ func (s *AcpSession) showDiff(path string, oldText *string, newText string) {
 	}
 
 	var diff string
-	err := vim.ExecLua(`return vim.text.diff(...)`, &diff, old, newText)
+	err := vim.api.ExecLua(`return vim.text.diff(...)`, &diff, old, newText)
 
 	if err != nil {
 		log.Printf("Error generating diff: %v\n", err)
@@ -545,20 +576,6 @@ func (s *AcpSession) showDiff(path string, oldText *string, newText string) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func main() {
 	// Turn off timestamps in output.
 	log.SetFlags(0)
@@ -571,10 +588,11 @@ func main() {
 
 	// Create a client connected to stdio. Configure the client to use the
 	// standard log package for logging.
-	vim, err = nvim.New(os.Stdin, stdout, stdout, log.Printf)
+	api, err := nvim.New(os.Stdin, stdout, stdout, log.Printf)
 	if err != nil {
 		log.Fatal(err)
 	}
+	vim = Vim{api: api}
 
 	// Create session manager
 	manager := &SessionManager{
@@ -582,13 +600,13 @@ func main() {
 	}
 
 	// Register RPC handlers
-	vim.RegisterHandler("AcpNewSession", manager.AcpNewSession)
-	vim.RegisterHandler("AcpSendPrompt", manager.AcpSendPrompt)
-	vim.RegisterHandler("AcpCancel", manager.AcpCancel)
-	vim.RegisterHandler("AcpSetMode", manager.AcpSetMode)
+	vim.api.RegisterHandler("AcpNewSession", manager.AcpNewSession)
+	vim.api.RegisterHandler("AcpSendPrompt", manager.AcpSendPrompt)
+	vim.api.RegisterHandler("AcpCancel", manager.AcpCancel)
+	vim.api.RegisterHandler("AcpSetMode", manager.AcpSetMode)
 
 	// Serve RPC requests
-	if err := vim.Serve(); err != nil {
+	if err := vim.api.Serve(); err != nil {
 		log.Fatal(err)
 	}
 }
