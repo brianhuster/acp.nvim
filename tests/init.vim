@@ -1,19 +1,21 @@
-vim.cmd [[set rtp+=..]]
-vim.o.clipboard = "unnamedplus"
+exe "set rtp+=" .. expand("<sfile>:p:h:h")
+set clipboard=unnamedplus
+
+lua << EOF
 vim.g.acp = {
 	agents = {
 		test = {
 			cmd = { "npx", "tsx", "agent.ts" },
 			mcp = true
 		}
-	},    mcp = {
-        nvim = {
+	},
+	mcp = {
+		nvim = {
 			cmd = { 'nvim-mcp' },
-            env = {
+			env = {
 				NVIM = vim.v.servername
 			}
 		}
 	}
-
 }
-
+EOF

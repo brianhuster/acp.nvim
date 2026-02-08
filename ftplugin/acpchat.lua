@@ -10,8 +10,7 @@ vim.treesitter.start(bufnr)
 
 vim.fn.prompt_setprompt(bufnr, "\027]133;A\a ")
 vim.fn.prompt_setcallback(bufnr, function(text)
-	acp.append_text(bufnr, "\n🤖 ")
-	acp.send_prompt(bufnr, text)
+	acp.prompt_callback(bufnr, text)
 end)
 vim.fn.prompt_setinterrupt(bufnr, function()
 	acp.cancel(bufnr)
@@ -23,6 +22,12 @@ end, {
 	nargs = 1,
 	desc = "Set ACP mode for this buffer",
 	complete = "custom,v:lua.require'acp'.acpsetmode_complete"
+})
+
+bufcommand(bufnr, "AcpViewDiff", function()
+	acp.view_diff(bufnr)
+end, {
+	desc = "View pending diffs in split windows"
 })
 
 -- Highlight all lines started with the prompt OCP `"\027]133;A\a` as sign ▶

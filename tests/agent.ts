@@ -3,6 +3,7 @@
 import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 import * as path from "node:path";
+import * as fs from "node:fs/promises";
 
 interface AgentSession {
 	pendingPrompt: AbortController | null;
@@ -40,7 +41,27 @@ class TestAgent implements acp.Agent {
 		});
 
 		return {
-			sessionId,
+			sessionId: sessionId,
+			modes: {
+				currentModeId: "ask",
+				availableModes: [
+					{
+						id: "ask",
+						name: "Ask",
+						description: "Request permission before making any changes"
+					},
+					{
+						id: "architect",
+						name: "Architect",
+						description: "Design and plan software systems without implementation"
+					},
+					{
+						id: "code",
+						name: "Code",
+						description: "Write and modify code with full tool access"
+					}
+				]
+			}
 		};
 	}
 
@@ -53,6 +74,13 @@ class TestAgent implements acp.Agent {
 	async setSessionMode(
 		_params: acp.SetSessionModeRequest,
 	): Promise<acp.SetSessionModeResponse> {
+		await this.connection.sessionUpdate({
+			sessionId: _params.sessionId,
+			update: {
+				sessionUpdate: "current_mode_update",
+				currentModeId: _params.modeId,
+			}
+		})
 		return {};
 	}
 
@@ -92,7 +120,6 @@ class TestAgent implements acp.Agent {
 		prompt: acp.ContentBlock[],
 		abortSignal: AbortSignal,
 	): Promise<void> {
-		// Extract text from prompt
 		let promptText = "";
 		for (const block of prompt) {
 			if (block.type === "text") {
@@ -100,7 +127,6 @@ class TestAgent implements acp.Agent {
 			}
 		}
 
-		// Rule-based responses based on prompt
 		if (promptText === "test:text") {
 			await this.handleTextTest(sessionId, abortSignal);
 		} else if (promptText === "test:read") {
@@ -108,7 +134,6 @@ class TestAgent implements acp.Agent {
 		} else if (promptText === "test:write") {
 			await this.handleWriteTest(sessionId, abortSignal);
 		} else {
-			// Default response
 			await this.connection.sessionUpdate({
 				sessionId,
 				update: {
@@ -124,7 +149,7 @@ class TestAgent implements acp.Agent {
 
 	private async handleTextTest(
 		sessionId: string,
-		abortSignal: AbortSignal,
+		_abortSignal: AbortSignal,
 	): Promise<void> {
 		await this.connection.sessionUpdate({
 			sessionId,
@@ -138,18 +163,15 @@ class TestAgent implements acp.Agent {
 		});
 	}
 
-	private formatFileContent(content: string, filePath: string): string {
+	private formatFileContent(content: string): string {
 		const lines = content.split("\n");
 		const totalLines = lines.length;
-		
-		// Format with line numbers like cat -n
 		let formatted = "<file>\n";
 		lines.forEach((line, index) => {
 			const lineNum = (index + 1).toString().padStart(5, "0");
 			formatted += `${lineNum}| ${line}\n`;
 		});
 		formatted += `\n(End of file - total ${totalLines} lines)\n</file>`;
-		
 		return formatted;
 	}
 
@@ -172,7 +194,6 @@ class TestAgent implements acp.Agent {
 
 		await this.simulateDelay(abortSignal, 300);
 
-		// Send tool call
 		await this.connection.sessionUpdate({
 			sessionId,
 			update: {
@@ -186,7 +207,6 @@ class TestAgent implements acp.Agent {
 			},
 		});
 
-		// Request permission
 		const readPermission = await this.connection.requestPermission({
 			sessionId,
 			toolCall: {
@@ -198,32 +218,19 @@ class TestAgent implements acp.Agent {
 				rawInput: { path: testFilePath },
 			},
 			options: [
-				{
-					kind: "allow_once",
-					name: "Allow reading",
-					optionId: "allow",
-				},
-				{
-					kind: "reject_once",
-					name: "Reject",
-					optionId: "reject",
-				},
+				{ kind: "allow_once", name: "Allow reading", optionId: "allow" },
+				{ kind: "reject_once", name: "Reject", optionId: "reject" },
 			],
 		});
 
-		if (
-			readPermission.outcome.outcome === "selected" &&
-			readPermission.outcome.optionId === "allow"
-		) {
+		if (readPermission.outcome.outcome === "selected" && readPermission.outcome.optionId === "allow") {
 			try {
-				// Use ACP client's ReadTextFile capability
 				const result = await this.connection.readTextFile({
 					sessionId: sessionId,
 					path: testFilePath,
 				});
 
-				// Format file content with line numbers
-				const formattedContent = this.formatFileContent(result.content, testFilePath);
+				const formattedContent = this.formatFileContent(result.content);
 
 				await this.connection.sessionUpdate({
 					sessionId,
@@ -234,10 +241,7 @@ class TestAgent implements acp.Agent {
 						content: [
 							{
 								type: "content",
-								content: {
-									type: "text",
-									text: formattedContent,
-								},
+								content: { type: "text", text: formattedContent },
 							},
 						],
 						rawOutput: { content: result.content },
@@ -250,10 +254,7 @@ class TestAgent implements acp.Agent {
 					sessionId,
 					update: {
 						sessionUpdate: "agent_message_chunk",
-						content: {
-							type: "text",
-							text: " Successfully read the file!",
-						},
+						content: { type: "text", text: " Successfully read the file!" },
 					},
 				});
 			} catch (err) {
@@ -272,10 +273,7 @@ class TestAgent implements acp.Agent {
 				sessionId,
 				update: {
 					sessionUpdate: "agent_message_chunk",
-					content: {
-						type: "text",
-						text: " Read operation was cancelled.",
-					},
+					content: { type: "text", text: " Read operation was cancelled." },
 				},
 			});
 		}
@@ -286,7 +284,7 @@ class TestAgent implements acp.Agent {
 		abortSignal: AbortSignal,
 	): Promise<void> {
 		const writeFilePath = path.join(process.cwd(), "test-write.txt");
-		const writeContent = `Test data written at ${new Date().toISOString()}`;
+		const writeContent = `Test data written at ${new Date().toISOString()}\nNew line added!`;
 
 		await this.connection.sessionUpdate({
 			sessionId,
@@ -294,14 +292,26 @@ class TestAgent implements acp.Agent {
 				sessionUpdate: "agent_message_chunk",
 				content: {
 					type: "text",
-					text: "I'll write some test data to a file using the file system client.",
+					text: "I'll write some test data to a file. I'll show you a diff first.",
 				},
 			},
 		});
 
 		await this.simulateDelay(abortSignal, 300);
 
-		// Send tool call
+		// 1. Try to read current content to generate a diff
+		let oldText: string | null = null;
+		try {
+			const result = await this.connection.readTextFile({
+				sessionId: sessionId,
+				path: writeFilePath,
+			});
+			oldText = result.content;
+		} catch (e) {
+			// File might not exist, which is fine
+		}
+
+		// 2. Send tool call WITH diff content
 		await this.connection.sessionUpdate({
 			sessionId,
 			update: {
@@ -311,11 +321,19 @@ class TestAgent implements acp.Agent {
 				kind: "edit",
 				status: "pending",
 				locations: [{ path: writeFilePath }],
+				content: [
+					{
+						type: "diff",
+						path: writeFilePath,
+						newText: writeContent,
+						oldText: oldText ?? undefined,
+					} as any, // Cast because SDK types might be strict
+				],
 				rawInput: { path: writeFilePath, content: writeContent },
 			},
 		});
 
-		// Request permission
+		// 3. Request permission
 		const writePermission = await this.connection.requestPermission({
 			sessionId,
 			toolCall: {
@@ -327,25 +345,13 @@ class TestAgent implements acp.Agent {
 				rawInput: { path: writeFilePath, content: writeContent },
 			},
 			options: [
-				{
-					kind: "allow_once",
-					name: "Allow writing",
-					optionId: "allow",
-				},
-				{
-					kind: "reject_once",
-					name: "Reject",
-					optionId: "reject",
-				},
+				{ kind: "allow_once", name: "Allow writing", optionId: "allow" },
+				{ kind: "reject_once", name: "Reject", optionId: "reject" },
 			],
 		});
 
-		if (
-			writePermission.outcome.outcome === "selected" &&
-			writePermission.outcome.optionId === "allow"
-		) {
+		if (writePermission.outcome.outcome === "selected" && writePermission.outcome.optionId === "allow") {
 			try {
-				// Use ACP client's WriteTextFile capability
 				await this.connection.writeTextFile({
 					sessionId: sessionId,
 					path: writeFilePath,
@@ -368,10 +374,7 @@ class TestAgent implements acp.Agent {
 					sessionId,
 					update: {
 						sessionUpdate: "agent_message_chunk",
-						content: {
-							type: "text",
-							text: ` Successfully wrote ${writeContent.length} bytes!`,
-						},
+						content: { type: "text", text: ` Successfully wrote ${writeContent.length} bytes!` },
 					},
 				});
 			} catch (err) {
@@ -390,10 +393,7 @@ class TestAgent implements acp.Agent {
 				sessionId,
 				update: {
 					sessionUpdate: "agent_message_chunk",
-					content: {
-						type: "text",
-						text: " Write operation was cancelled.",
-					},
+					content: { type: "text", text: " Write operation was cancelled." },
 				},
 			});
 		}
