@@ -1,2 +1,6 @@
 [*.lua]
 indent_style = tab
+
+[doc/*.txt]
+indent_style = space
+indent_size = 4

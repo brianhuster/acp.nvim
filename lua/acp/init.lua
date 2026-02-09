@@ -195,7 +195,9 @@ local function handle_notification(bufnr, _method, params)
                     local old = tc.oldText or ""
                     local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
                     if diff ~= "" then
-                        utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff),
+						utils.append_text(bufnr,
+							("\nTo see this diff in a split view, run `:AcpViewDiff`\n```diff\n--- %s\n+++ %s\n%s\n```\n")
+							:format(tc.path, tc.path, diff),
                             session.window)
                     end
                 end

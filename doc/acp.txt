@@ -1,0 +1,168 @@
+*acp.txt*                ACP client for Nvim                        *acp*
+
+
+                                        Type |gO| to see the table of contents.
+
+==============================================================================
+1. Introduction                                       *acp-introduction*
+
+`acp.nvim` implements an Agent Client Protocol (ACP) client for Neovim, which
+allows you to use any AI agents that support this protocol in Nvim.
+
+ACP is an open standard that allows AI agents to communicate with editor
+clients in a structured way, enabling features like file system access,
+tool execution, and real-time streaming of thoughts and messages.
+
+See https://agentclientprotocol.com for more details about the protocol.
+
+==============================================================================
+2. Configuration                                          *acp-configuration*
+
+This plugin only ships the client, not any agents. You need to install an ACP
+agent separately (e.g., `opencode`).
+
+                                                                *g:acp*
+To configure the plugin, you need to set the |g:acp| variable in your |init.lua|
+or |init.vim|. This variable defines how to connect to your agents and which
+MCP (Model Context Protocol) servers they can use.
+
+Example configuration: >lua
+    vim.g.acp = {
+        agents = {
+            opencode = {
+                cmd = { "opencode", "acp" },
+                env = {
+                    OPENCODE_API_KEY = "...",
+                },
+                mcp = { "filesystem" } -- Use specific MCP servers
+            },
+            claude = {
+                cmd = { "claude-agent", "acp" },
+                mcp = true -- Allow all configured MCP servers
+            }
+        },
+        mcp = {
+            filesystem = {
+                cmd = { "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user/work" }
+            },
+            brave_search = {
+                url = "https://mcp-server.example.com",
+                headers = { ["X-API-Key"] = "..." }
+            }
+        }
+    }
+<
+See |g:acp.agents| and |g:acp.mcp| for details on the `agents` and `mcp`
+fields of |g:acp|.
+
+------------------------------------------------------------------------------
+AGENT CONFIGURATION ~                               *g:acp.agents*
+
+Each entry in the _required_ `agents` table supports:
+
+`cmd` (string[]) (required)
+    The shell command and arguments used to start the agent via stdio.
+
+`env` (table<string, string>) (optional)
+    Environment variables to set for the agent process.
+
+`mcp` (string[]|boolean) (optional)
+    A list of MCP server names (defined in the global `mcp` table) that the
+    agent is allowed to use. If set to `true`, all defined MCP servers are
+    allowed.
+
+------------------------------------------------------------------------------
+MCP CONFIGURATION ~
+
+(Optional)
+
+Model Context Protocol servers provide additional tools and context to agents.
+They can be run via stdio or connected to via HTTP/SSE.
+
+`cmd` (string[])
+    For stdio-based servers. The command to execute.
+
+`url` (string)
+    For network-based servers. The URL of the SSE endpoint.
+
+`headers` (table<string, string>)
+    Custom HTTP headers for network-based servers.
+
+`env` (table<string, string>)
+    Environment variables for the MCP process.
+
+==============================================================================
+3. Commands                                               *acp-commands*
+
+*:AcpNewSession* {agent_name}
+    Start a new chat session with the specified agent. This creates a new
+    buffer with the `acpchat` filetype and opens it in a vertical split.
+
+*:AcpSetMode* {mode_id}
+    (Buffer-local) Change the current mode of the agent (e.g., "ask", "code").
+    You can press `<Tab>` to get completion for available modes provided by
+    the agent.
+
+*:AcpViewDiff*
+    (Buffer-local) If the agent has proposed file changes, this command opens
+    a new tab with a side-by-side diff view.
+
+==============================================================================
+4. Interaction                                            *acp-interaction*
+
+CHAT BUFFER ~
+
+The chat buffer is Nvim's built-in |prompt-buffer|, so any |prompt-buffer|
+commands work (e.g `Enter` to submit a message, `Ctrl-C` in |insert| mode to
+cancel, `Shift-Enter` in insert mode to insert a newline, etc).
+
+Other than default |prompt-buffer| commands, the following are available:
+
+`[[`    Jump to the previous prompt.
+`]]`    Jump to the next prompt.
+`gO`    Open the table of contents.
+
+The chat buffer's filetype is set to `acpchat`, so you can create custom
+mappings and autocommands for it with |FileType| autocommand. For example, to make `Ctrl-C` also work in Normal mode to cancel the current input, you can add this to your config: >lua
+    vim.api.nvim_create_autocmd("FileType", {
+        pattern = "acpchat",
+        callback = function()
+            --- Go to insert mode and send Ctrl-C, then return to normal mode
+            vim.keymap.set("n", "<C-c>", "i<C-c><Esc>", { buffer = true })
+        end
+    })
+
+Some terminal emulators may not send the correct key codes for `Shift-Enter`.
+If you find that `Shift-Enter` is not working to insert newlines, you can
+remap it in your terminal. For example, to use `Enter` in insert mode to
+insert a new line without submitting, and keep `Enter` in Normal mode to
+submit, you can add the following mapping to your Neovim configuration:
+>lua
+    vim.api.nvim_create_autocmd("FileType", {
+        pattern = "acpchat",
+        callback = function()
+            vim.keymap.set("i", "<CR>", "<S-CR>", { buffer = true })
+        end
+    })
+<
+
+SLASH COMMANDS ~
+
+Agents can provide custom slash commands (e.g., `/plan`). `acp.nvim`
+implements an in-process LSP server that provides completion and signature
+help for these commands based on the agent's advertised capabilities.
+
+- Completion: `acp.nvim` support completion for slash commands when they are
+in the start of user input. To get autocompletion when you type `/`, you need
+to use enable |lsp-completion| or use an auto-completion plugin like
+`blink.cmp`. You can also trigger completion manually with |i_CTRL-X_CTRL-O|.
+- Signature Help can be triggered with |i_CTRL-S|
+
+==============================================================================
+CONTRIBUTING                                            *acp-contributing*
+
+Bug reports, feature requests, and patches are welcome:
+    https://github.com/brianhuster/acp.nvim
+
+
+ vim:tw=78:ts=8:sw=4:sts=4:et:ft=help:norl:
