@@ -56,45 +56,57 @@ end
 ---@param text string
 ---@param winid? number Optional window ID to scroll
 function M.append_text(bufnr, text, winid)
-	if not api.nvim_buf_is_valid(bufnr) then
-		return
-	end
+    if not api.nvim_buf_is_valid(bufnr) then
+        return
+    end
 
-	-- Get the prompt line position using the ': mark
-	local prompt_pos = api.nvim_buf_get_mark(bufnr, ":")
-	local prompt_line = prompt_pos[1] -- 1-indexed line number
+    -- Get the prompt line position using the ': mark
+    local prompt_pos = api.nvim_buf_get_mark(bufnr, ":")
+    local prompt_line = prompt_pos[1] -- 1-indexed line number
 
-	-- Get the line just before the prompt (where we append content)
-	local content_line_idx = prompt_line - 2 -- 0-indexed (prompt_line - 1 - 1)
+    -- Get the line just before the prompt (where we append content)
+    local content_line_idx = prompt_line - 2 -- 0-indexed (prompt_line - 1 - 1)
 
-	if content_line_idx < 0 then
-		-- No content line exists yet, insert a new line before prompt
-		api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
-		content_line_idx = 0
-	end
+    if content_line_idx < 0 then
+        -- No content line exists yet, insert a new line before prompt
+        api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+        content_line_idx = 0
+    end
 
-	-- Get the current content of that line
-	local current_line = api.nvim_buf_get_lines(bufnr, content_line_idx, content_line_idx + 1, false)[1] or ""
+    -- Get the current content of that line
+    local current_line = api.nvim_buf_get_lines(bufnr, content_line_idx, content_line_idx + 1, false)[1] or ""
 
-	-- Append the new text to the current line
-	local new_text = current_line .. text
+    -- Append the new text to the current line
+    local new_text = current_line .. text
 
-	-- Split by newlines if the text contains them
-	local lines = vim.split(new_text, "\n", { plain = true })
+    -- Split by newlines if the text contains them
+    local lines = vim.split(new_text, "\n", { plain = true })
 
-	-- Replace the current line and add any additional lines
-	api.nvim_buf_set_lines(bufnr, content_line_idx, content_line_idx + 1, false, lines)
+    -- Replace the current line and add any additional lines
+    api.nvim_buf_set_lines(bufnr, content_line_idx, content_line_idx + 1, false, lines)
 
-	-- Auto-scroll if window is provided and valid
-	if winid and api.nvim_win_is_valid(winid) then
-		local total_lines = api.nvim_buf_line_count(bufnr)
-		local last_visible_line = fn.line("w$", winid)
-		
-		-- Only auto-scroll if user was already at bottom
-		if last_visible_line >= total_lines - 1 then
-			api.nvim_win_set_cursor(winid, { total_lines, 0 })
-		end
-	end
+    -- Auto-scroll if window is provided and valid
+    if winid and api.nvim_win_is_valid(winid) then
+        local total_lines = api.nvim_buf_line_count(bufnr)
+        local last_visible_line = fn.line("w$", winid)
+
+        -- Only auto-scroll if user was already at bottom
+        if last_visible_line >= total_lines - 1 then
+            api.nvim_win_set_cursor(winid, { total_lines, 0 })
+        end
+    end
+end
+
+---@param path string
+---@return boolean, string
+function M.valid_file_path(path)
+    if fn.isabsolutepath(path) ~= 1 then
+        return false, ("Path %s is not an absolute path"):format(path)
+    end
+    if fn.filereadable(path) ~= 1 then
+        return false, ("File %s does not exist or is not readable"):format(path)
+    end
+    return true, ""
 end
 
 return M

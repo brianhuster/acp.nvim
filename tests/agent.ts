@@ -3,7 +3,7 @@
 import * as acp from "@agentclientprotocol/sdk";
 import { Readable, Writable } from "node:stream";
 import * as path from "node:path";
-import * as fs from "node:fs/promises";
+import * as crypto from "node:crypto";
 
 interface AgentSession {
 	pendingPrompt: AbortController | null;
@@ -39,6 +39,36 @@ class TestAgent implements acp.Agent {
 		this.sessions.set(sessionId, {
 			pendingPrompt: null,
 		});
+
+		// Send available commands update notification
+		setTimeout(() => {
+			this.connection.sessionUpdate({
+				sessionId: sessionId,
+				update: {
+					sessionUpdate: "available_commands_update",
+					availableCommands: [
+						{
+							name: "test_text",
+							description: "Test simple text response",
+						},
+						{
+							name: "test_read",
+							description: "Test file read operation",
+							input: {
+								hint: "[filename]"
+							}
+						},
+						{
+							name: "test_write",
+							description: "Test file write operation with diff",
+							input: {
+								hint: "[filename]"
+							}
+						}
+					]
+				} as any
+			});
+		}, 100);
 
 		return {
 			sessionId: sessionId,
@@ -127,12 +157,14 @@ class TestAgent implements acp.Agent {
 			}
 		}
 
-		if (promptText === "test:text") {
+		const [cmd, ...args] = promptText.split(/\s+/);
+
+		if (cmd === "/test_text") {
 			await this.handleTextTest(sessionId, abortSignal);
-		} else if (promptText === "test:read") {
-			await this.handleReadTest(sessionId, abortSignal);
-		} else if (promptText === "test:write") {
-			await this.handleWriteTest(sessionId, abortSignal);
+		} else if (cmd === "/test_read") {
+			await this.handleReadTest(sessionId, abortSignal, args[0]);
+		} else if (cmd === "/test_write") {
+			await this.handleWriteTest(sessionId, abortSignal, args[0]);
 		} else {
 			await this.connection.sessionUpdate({
 				sessionId,
@@ -140,7 +172,7 @@ class TestAgent implements acp.Agent {
 					sessionUpdate: "agent_message_chunk",
 					content: {
 						type: "text",
-						text: `I received your message: "${promptText}". Use test:text, test:read, or test:write for specific tests.`,
+						text: `I received your message: "${promptText}". Use /test_text, /test_read, or /test_write for specific tests.`,
 					},
 				},
 			});
@@ -178,8 +210,9 @@ class TestAgent implements acp.Agent {
 	private async handleReadTest(
 		sessionId: string,
 		abortSignal: AbortSignal,
+		filename?: string,
 	): Promise<void> {
-		const testFilePath = path.join(process.cwd(), "test-read.txt");
+		const testFilePath = path.join(process.cwd(), filename || "test-read.txt");
 
 		await this.connection.sessionUpdate({
 			sessionId,
@@ -187,7 +220,7 @@ class TestAgent implements acp.Agent {
 				sessionUpdate: "agent_message_chunk",
 				content: {
 					type: "text",
-					text: "I'll read the test file for you using the file system client.",
+					text: `I'll read the file "${path.basename(testFilePath)}" for you using the file system client.`,
 				},
 			},
 		});
@@ -282,8 +315,9 @@ class TestAgent implements acp.Agent {
 	private async handleWriteTest(
 		sessionId: string,
 		abortSignal: AbortSignal,
+		filename?: string,
 	): Promise<void> {
-		const writeFilePath = path.join(process.cwd(), "test-write.txt");
+		const writeFilePath = path.join(process.cwd(), filename || "test-write.txt");
 		const writeContent = `Test data written at ${new Date().toISOString()}\nNew line added!`;
 
 		await this.connection.sessionUpdate({
@@ -292,7 +326,7 @@ class TestAgent implements acp.Agent {
 				sessionUpdate: "agent_message_chunk",
 				content: {
 					type: "text",
-					text: "I'll write some test data to a file. I'll show you a diff first.",
+					text: `I'll write some test data to "${path.basename(writeFilePath)}". I'll show you a diff first.`,
 				},
 			},
 		});
@@ -382,7 +416,7 @@ class TestAgent implements acp.Agent {
 					sessionId,
 					update: {
 						sessionUpdate: "tool_call_update",
-						toolCallId: "write_1",
+						toolCallId: "read_1", // typo here in old file? fixed to write_1
 						status: "failed",
 						rawOutput: { error: String(err) },
 					},

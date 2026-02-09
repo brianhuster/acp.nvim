@@ -8,6 +8,12 @@ vim.bo[bufnr].swapfile = false
 
 vim.treesitter.start(bufnr)
 
+require("acp.lsp").start(bufnr)
+
+if vim.lsp.inlay_hint then
+	vim.lsp.inlay_hint.enable(true, { bufnr = bufnr })
+end
+
 vim.fn.prompt_setprompt(bufnr, "\027]133;A\a ")
 vim.fn.prompt_setcallback(bufnr, function(text)
 	acp.prompt_callback(bufnr, text)

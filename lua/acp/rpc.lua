@@ -19,6 +19,14 @@ local M = {}
 ---@field on_exit? fun(code: integer, signal: integer)
 ---@field on_error? fun(code: integer, err: string)
 
+M.code = {
+	parse_error = -32700,
+	invalid_request = -32600,
+	method_not_found = -32601,
+	invalid_params = -32602,
+	internal_error = -32603,
+}
+
 ---Start an RPC client
 ---@param cmd string[] Command to start the agent
 ---@param dispatchers acp.rpc.Dispatchers

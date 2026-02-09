@@ -3,6 +3,7 @@ local vim = vim
 local api, fn, iter = vim.api, vim.fn, vim.iter
 local utils = require("acp.utils")
 local meta = require("acp.meta")
+local rpc = require("acp.rpc")
 
 local agent_methods = meta.agentMethods
 local client_methods = meta.clientMethods
@@ -24,6 +25,7 @@ local client_methods = meta.clientMethods
 ---@field modes? acp.SessionModeState
 ---@field pending_permissions table<number, { options: acp.PermissionOption[], response: fun(result: any?, error: acp.rpc.Error?) }>
 ---@field lastest_diff? acp.Diff
+---@field available_commands? acp.AvailableCommand[]
 
 ---@type table<number, acp.Session>
 M.sessions = {}
@@ -66,9 +68,15 @@ local function handle_server_request(bufnr, method, params, response)
 		utils.append_text(bufnr, table.concat(lines, "\n") .. " ")
 	elseif method == client_methods.fs_read_text_file then
 		---@type acp.ReadTextFileRequest
-		local p = params
-		local path = fn.fnamemodify(p.path, ":p")
-		local bufnr_target = fn.bufnr(path)
+        local p = params
+        local path = p.path
+        local path_valid, err = utils.valid_file_path(path)
+		if not path_valid then
+			response(nil, { code = rpc.code.invalid_params, message = err })
+			return
+		end
+
+		local bufnr_target = fn.bufnr(p.path)
 
 		local content
 		local source = "file"
@@ -80,7 +88,7 @@ local function handle_server_request(bufnr, method, params, response)
 			content = table.concat(lines, "\n")
 			source = "buffer"
 		else
-			local f = io.open(path, "r")
+			local f = io.open(p.path, "r")
 			if not f then
 				response(nil, { code = -32603, message = "Could not open file: " .. path })
 				return
@@ -102,13 +110,20 @@ local function handle_server_request(bufnr, method, params, response)
 	elseif method == client_methods.fs_write_text_file then
 		---@type acp.WriteTextFileRequest
 		local p = params
-		local path = fn.fnamemodify(p.path, ":p")
+        local path = p.path
+        local path_valid, err = utils.valid_file_path(path)
+        if not path_valid then
+            response(nil, { code = rpc.code.invalid_params, message = err })
+            return
+        end
+
 		local bufnr_target = fn.bufnr(path)
 
 		if bufnr_target ~= -1 and api.nvim_buf_is_loaded(bufnr_target) then
 			local lines = vim.split(p.content, "\n", { plain = true })
 			api.nvim_buf_set_lines(bufnr_target, 0, -1, false, lines)
 			utils.append_text(bufnr, ("[Wrote %d bytes to buffer %s]\n"):format(#p.content, path))
+			response({})
 		else
 			local dir = fn.fnamemodify(path, ":h")
 			fn.mkdir(dir, "p")
@@ -120,8 +135,8 @@ local function handle_server_request(bufnr, method, params, response)
 			f:write(p.content)
 			f:close()
 			utils.append_text(bufnr, ("[Wrote %d bytes to %s]\n"):format(#p.content, path))
+			response({})
 		end
-		response({})
 	else
 		response(nil, { code = -32601, message = "Method not found: " .. method })
 	end
@@ -139,62 +154,66 @@ local function handle_notification(bufnr, _method, params)
 		local p = params
 		local u = p.update
 
-		if u.sessionUpdate == "agent_message_chunk" then
-			local content = u.content
-			if content and content.type == "text" then
-				utils.append_text(bufnr, content.text, session.window)
-			end
-		elseif u.sessionUpdate == "tool_call" then
-			utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status or "pending"), session.window)
-			for _, tc in ipairs(u.content or {}) do
-				if tc.content and tc.content.type == "text" then
-					utils.append_text(bufnr, tc.content.text, session.window)
-				elseif tc.newText then -- Diff
-					session.lastest_diff = tc --[[@as acp.Diff ]]
-					local old = tc.oldText or ""
-					local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
-					if diff ~= "" then
-						utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff), session.window)
-					end
-				end
-			end
-		elseif u.sessionUpdate == "tool_call_update" then
-			local has_title = u.title ~= nil
-			local has_status = u.status ~= nil
-			local has_content = u.content and #u.content > 0
+        if u.sessionUpdate == "agent_message_chunk" then
+            local content = u.content
+            if content and content.type == "text" then
+                utils.append_text(bufnr, content.text, session.window)
+            end
+        elseif u.sessionUpdate == "tool_call" then
+            utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status or "pending"), session.window)
+            for _, tc in ipairs(u.content or {}) do
+                if tc.content and tc.content.type == "text" then
+                    utils.append_text(bufnr, tc.content.text, session.window)
+                elseif tc.newText then -- Diff
+                    session.lastest_diff = tc --[[@as acp.Diff ]]
+                    local old = tc.oldText or ""
+                    local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
+                    if diff ~= "" then
+                        utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff),
+                            session.window)
+                    end
+                end
+            end
+        elseif u.sessionUpdate == "tool_call_update" then
+            local has_title = u.title ~= nil
+            local has_status = u.status ~= nil
+            local has_content = u.content and #u.content > 0
 
-			if has_title and has_status then
-				utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status), session.window)
-			elseif has_title then
-				utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.title), session.window)
-			elseif has_status and has_content then
-				utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.status), session.window)
-			end
+            if has_title and has_status then
+                utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status), session.window)
+            elseif has_title then
+                utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.title), session.window)
+            elseif has_status and has_content then
+                utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.status), session.window)
+            end
 
-			for _, tc in ipairs(u.content or {}) do
-				if tc.content and tc.content.type == "text" then
-					utils.append_text(bufnr, tc.content.text, session.window)
-				elseif tc.newText then -- Diff
-					session.lastest_diff = tc
-					local old = tc.oldText or ""
-					local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
-					if diff ~= "" then
-						utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff), session.window)
-					end
-				end
-			end
-		elseif u.sessionUpdate == "plan" then
-			utils.append_text(bufnr, "[Plan update]\n", session.window)
-		elseif u.sessionUpdate == "agent_thought_chunk" then
-			local content = u.content
-			if content and content.type == "text" then
-				utils.append_text(bufnr, ("[Thought] %s\n"):format(content.text), session.window)
-			end
-		elseif u.sessionUpdate == "current_mode_update" then
-			if session.modes and u.currentModeId then
-				session.modes.currentModeId = u.currentModeId
-			end
-		end
+            for _, tc in ipairs(u.content or {}) do
+                if tc.content and tc.content.type == "text" then
+                    utils.append_text(bufnr, tc.content.text, session.window)
+                elseif tc.newText then -- Diff
+                    session.lastest_diff = tc
+                    local old = tc.oldText or ""
+                    local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
+                    if diff ~= "" then
+                        utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff),
+                            session.window)
+                    end
+                end
+            end
+        elseif u.sessionUpdate == "plan" then
+            utils.append_text(bufnr, "[Plan update]\n", session.window)
+        elseif u.sessionUpdate == "agent_thought_chunk" then
+            local content = u.content
+            if content and content.type == "text" then
+                utils.append_text(bufnr, ("[Thought] %s\n"):format(content.text), session.window)
+            end
+        elseif u.sessionUpdate == "current_mode_update" then
+            if session.modes and u.currentModeId then
+                session.modes.currentModeId = u.currentModeId
+            end
+        elseif u.sessionUpdate == "available_commands_update" then
+			session.available_commands = u.availableCommands
+        end
 	end
 end
 
@@ -243,6 +262,7 @@ function M.new_session(agent_name)
 		auto_approve = false,
 		pending_permissions = {},
 		lastest_diff = nil,
+		available_commands = {},
 	}
 
 	-- 1. Initialize
@@ -428,7 +448,7 @@ function M.view_diff(bufnr)
 
 	vim.cmd("rightbelow vsplit")
 	local diff_buf = api.nvim_create_buf(false, true)
-	api.nvim_buf_set_name(diff_buf, "acp://diff/" .. diff.path)
+	api.nvim_buf_set_name(diff_buf, "acp-diff:/" .. diff.path)
 	api.nvim_buf_set_lines(diff_buf, 0, -1, false, vim.split(diff.newText, "\n", { plain = true }))
 	api.nvim_win_set_buf(0, diff_buf)
 	vim.wo.diff = true
