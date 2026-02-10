@@ -7,7 +7,7 @@ local M = {}
 ---@field code integer
 ---@field message string
 
----@class acp.rpc.Client
+---@class acp.rpc.Client : acp.InitializeResponse
 ---@field request fun(method: string, params: any, callback: fun(err: acp.rpc.Error?, result: any?))
 ---@field notify fun(method: string, params: any)
 ---@field response fun(id: string, result: any?, error: acp.rpc.Error?)

@@ -214,10 +214,10 @@ local function handle_notification(agent, method, params)
 end
 
 ---@param agent_name string
----@return acp.rpc.Client?
-local function start_agent(agent_name)
+---@param callback fun(client: acp.rpc.Client)
+local function start_agent(agent_name, callback)
 	if M.agents[agent_name] then
-		return M.agents[agent_name]
+		callback(M.agents[agent_name])
 	end
 
 	local agent_config = M.config.agents[agent_name]
@@ -229,7 +229,7 @@ local function start_agent(agent_name)
 	local cmd = agent_config.cmd
 	local env = agent_config.env or {}
 
-	local rpc_client = require("acp.rpc").start(cmd, {
+	local client = require("acp.rpc").start(cmd, {
 		on_error = function(code, err)
 			vim.notify(("Agent '%s' error (%d): %s"):format(agent_name, code, err), vim.log.levels.ERROR)
 		end,
@@ -238,6 +238,7 @@ local function start_agent(agent_name)
 			for buf, session in pairs(M.sessions) do
 				if session.agent_name == agent_name then
 					utils.append_text(buf, ("\n[Agent '%s' has exited]\n"):format(agent_name))
+					M.agents[agent_name] = nil
 					M.sessions[buf] = nil
 				end
 			end
@@ -250,16 +251,6 @@ local function start_agent(agent_name)
 		end,
 	}, { env = env })
 
-	return rpc_client
-end
-
---- Start the ACP connection for a buffer
----@param agent_name string
-function M.new_session(agent_name)
-	local client = start_agent(agent_name)
-	if not client then return end
-
-	-- 1. Initialize
 	client.request(agent_methods.initialize, {
 		protocolVersion = meta.version,
 		clientCapabilities = {
@@ -271,13 +262,23 @@ function M.new_session(agent_name)
 			version = "0.1.0",
 			title = "ACP client for Neovim",
 		},
+		---@param err any
+		---@param init_res acp.InitializeResponse
 	}, function(err, init_res)
 		if err then
 			vim.notify("Initialize error: " .. vim.inspect(err), vim.log.levels.ERROR)
 			return
 		end
+		M.agents[agent_name] = client
+		client = vim.tbl_deep_extend("error", client, init_res)
+		callback(client)
+	end)
+end
 
-		-- 2. Create Session
+--- Start the ACP connection for a buffer
+---@param agent_name string
+function M.new_session(agent_name)
+	start_agent(agent_name, function(client)
 		local mcp = {}
 		if M.config.agents[agent_name].mcp then
 			local mcp_names = M.config.agents[agent_name].mcp
@@ -293,7 +294,7 @@ function M.new_session(agent_name)
 		end
 
 		-- Filter MCP servers based on agent capabilities
-		local agent_caps = init_res.agentCapabilities or {}
+		local agent_caps = client.agentCapabilities or {}
 		local mcp_caps = agent_caps.mcpCapabilities or {}
 		local filtered_mcp = {}
 		for _, srv in ipairs(mcp) do
@@ -312,6 +313,8 @@ function M.new_session(agent_name)
 		client.request(agent_methods.session_new, {
 			cwd = fn.getcwd(),
 			mcpServers = filtered_mcp,
+			---@param err2 any
+			---@param new_sess_res acp.NewSessionResponse
 		}, function(err2, new_sess_res)
             if err2 then
                 vim.notify("session/new error: " .. vim.inspect(err2), vim.log.levels.ERROR)
@@ -327,6 +330,8 @@ function M.new_session(agent_name)
 				available_commands = {},
 			}
 
+			--- Don't save client directly in M.sessions to avoid polluting
+			--- checkhealth, etc
 			setmetatable(session, {
 				__index = function(t, k)
 					if k == "client" then
