@@ -48,7 +48,9 @@ function M.start(cmd, dispatchers, opts)
 	---@param result any
 	---@param error acp.rpc.Error
 	local function send_response(id, result, error)
-		if state.closing then return false end
+		if state.closing then
+			return false
+		end
 
 		local response = { jsonrpc = "2.0", id = id }
 		if error then
@@ -69,7 +71,9 @@ function M.start(cmd, dispatchers, opts)
 		-- Process complete lines
 		while true do
 			local pos = state.buffer:find("\n", 1, true)
-			if not pos then break end
+			if not pos then
+				break
+			end
 
 			local line = state.buffer:sub(1, pos - 1)
 			state.buffer = state.buffer:sub(pos + 1)
@@ -92,7 +96,6 @@ function M.start(cmd, dispatchers, opts)
 						else
 							send_response(msg.id, nil, { code = -32601, message = "Method not found" })
 						end
-
 					elseif msg.method then
 						-- Notification from agent (has method but NO id)
 						if dispatchers.notification then
@@ -153,7 +156,9 @@ function M.start(cmd, dispatchers, opts)
 	-- Public API
 	return {
 		request = function(method, params, callback)
-			if state.closing then return false end
+			if state.closing then
+				return false
+			end
 
 			local id = state.next_id
 			state.next_id = state.next_id + 1
@@ -172,7 +177,9 @@ function M.start(cmd, dispatchers, opts)
 		response = send_response,
 
 		notify = function(method, params)
-			if state.closing then return false end
+			if state.closing then
+				return false
+			end
 
 			system_obj:write(vim.json.encode({
 				jsonrpc = "2.0",

@@ -7,6 +7,10 @@ bin/
 
 # Test binary, built with `go test -c`
 *.test
+Xtest
+.venv/
+.pytest_cache/
+__pycache__/
 
 # Output of the go coverage tool
 *.out

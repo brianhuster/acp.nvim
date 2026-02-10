@@ -1,0 +1,13 @@
+[project]
+name = "acp.nvim"
+version = "0.1.0"
+description = "Test suite for unnest.nvim"
+requires-python = ">=3.12"
+dependencies = [
+    "pynvim",
+    "pytest",
+	"pytest-rerunfailures",
+	"agent-client-protocol",
+	"pyperclipimg",
+	"requests"
+]

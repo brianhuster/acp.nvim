@@ -21,13 +21,20 @@ See https://agentclientprotocol.com for more details about the protocol.
 This plugin only ships the client, not any agents. You need to install an ACP
 agent separately (e.g., `opencode`).
 
-                                                                *g:acp*
-To configure the plugin, you need to set the |g:acp| variable in your |init.lua|
-or |init.vim|. This variable defines how to connect to your agents and which
-MCP (Model Context Protocol) servers they can use.
+To configure the plugin, you need to call function
+`require("acp").config()` in your |config|. This function accept a table
+with the following fields:
+- `agents` (`table<string, acp.config.Agent`) (required): Defines the agents
+that you want to use. Each key is an agent name, and the value is an object
+that defines how to connect to that agent. See |acp.config.Agent| for details.
+- `mcp` (`table<string, acp.config.Mcp>`) (optional): Defines MCP servers that
+agents can use to provide additional context and tools. See |acp.config.Mcp| for
+details.
+- `default_agent` (string) (optional): The name of the default agent to use
+when you run `:Acp new-session` without specifying an agent.
 
 Example configuration: >lua
-    vim.g.acp = {
+    require("acp").config({
         agents = {
             opencode = {
                 cmd = { "opencode", "acp" },
@@ -36,8 +43,8 @@ Example configuration: >lua
                 },
                 mcp = { "filesystem" } -- Use specific MCP servers
             },
-            claude = {
-                cmd = { "claude-agent", "acp" },
+            copilot = {
+                cmd = { "copilot", "--acp" },
                 mcp = true -- Allow all configured MCP servers
             }
         },
@@ -49,14 +56,12 @@ Example configuration: >lua
                 url = "https://mcp-server.example.com",
                 headers = { ["X-API-Key"] = "..." }
             }
-        }
-    }
+        },
+        default_agent = "opencode"
+    })
 <
-See |g:acp.agents| and |g:acp.mcp| for details on the `agents` and `mcp`
-fields of |g:acp|.
-
 ------------------------------------------------------------------------------
-AGENT CONFIGURATION ~                               *g:acp.agents*
+AGENT CONFIGURATION ~                               *acp.config.Agent*
 
 Each entry in the _required_ `agents` table supports:
 
@@ -72,7 +77,7 @@ Each entry in the _required_ `agents` table supports:
     allowed.
 
 ------------------------------------------------------------------------------
-MCP CONFIGURATION ~
+MCP CONFIGURATION ~                                     *acp.config.Mcp*
 
 (Optional)
 
@@ -92,20 +97,27 @@ They can be run via stdio or connected to via HTTP/SSE.
     Environment variables for the MCP process.
 
 ==============================================================================
-3. Commands                                               *acp-commands*
+3. Commands                                               *:Acp*
 
-*:AcpNewSession* {agent_name}
+This plugin only provides the `:Acp` command, which has the following
+subcommands:
+
+:Acp new-session {agent_name} ~
     Start a new chat session with the specified agent. This creates a new
     buffer with the `acpchat` filetype and opens it in a vertical split.
 
-*:AcpSetMode* {mode_id}
-    (Buffer-local) Change the current mode of the agent (e.g., "ask", "code").
-    You can press `<Tab>` to get completion for available modes provided by
-    the agent.
+:Acp set-mode {mode_id} ~
+    (Buffer-local, only available if the agent supports mode) Change the
+    current mode of the agent (e.g., "ask", "code"). You can press `<Tab>` to
+    get completion for available modes provided by the agent. This subcommand
+    is only available if the agent advertises mode
 
-*:AcpViewDiff*
-    (Buffer-local) If the agent has proposed file changes, this command opens
-    a new tab with a side-by-side diff view.
+:Acp view-diff ~
+    (Buffer-local, only available if there is a diff to view) View the latest
+    diff from the session.
+
+To run checkhealth for this plugin, use `:checkhealth acp`. This is useful to
+debug issues with this plugin
 
 ==============================================================================
 4. Interaction                                            *acp-interaction*
@@ -157,6 +169,14 @@ in the start of user input. To get autocompletion when you type `/`, you need
 to use enable |lsp-completion| or use an auto-completion plugin like
 `blink.cmp`. You can also trigger completion manually with |i_CTRL-X_CTRL-O|.
 - Signature Help can be triggered with |i_CTRL-S|
+
+Pasting image/audio ~
+
+If the agent supports it, you can |paste| images and audio directly into the
+chat buffer, by pressing `Ctrl-Shift-v` (macOS: CMD-v) in insert mode. Note
+that you cannot use |put| or |:put| command to paste images/audio, as |put| is
+a different concept from |paste|, and |put| only works with text. See |paste|
+for more details.
 
 ==============================================================================
 CONTRIBUTING                                            *acp-contributing*

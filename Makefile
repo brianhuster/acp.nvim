@@ -1,5 +1,17 @@
-# Create a build that run go build -o bin/acp-nvim
+.PHONY: test lint lintlua linthelp format
 
-.PHONY: build
-build:
-	go build -o bin/acp-nvim -buildvcs=false ./go
+ifeq ($(OS),Windows_NT)
+  PYTEST := .venv/Scripts/pytest.exe
+else
+  PYTEST := .venv/bin/pytest
+endif
+
+test:
+	uv sync
+	$(PYTEST) -s tests
+
+lint:
+	nvim --clean -l scripts/luals.lua
+
+format:
+	stylua .

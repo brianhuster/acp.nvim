@@ -3,7 +3,7 @@ local api = vim.api
 
 ---@param bufnr number
 function M.start(bufnr)
-	local acp = require("acp")
+	local acp = require("acp.core")
 
 	vim.lsp.start({
 		name = "acp-lsp",
@@ -130,9 +130,9 @@ function M.start(bufnr)
 							parameters = found_cmd.input and {
 								{
 									label = found_cmd.input.hint,
-								}
+								},
 							} or {},
-						}
+						},
 					},
 					activeSignature = 0,
 					activeParameter = 0,

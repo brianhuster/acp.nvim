@@ -1,6 +1,7 @@
+require("acp.clipboard")
+
 local bufnr = vim.api.nvim_get_current_buf()
-local acp = require("acp")
-local bufcommand = vim.api.nvim_buf_create_user_command
+local acp = require("acp.core")
 
 vim.bo[bufnr].buftype = "prompt"
 vim.bo[bufnr].bufhidden = "hide"
@@ -22,27 +23,13 @@ vim.fn.prompt_setinterrupt(bufnr, function()
 	acp.cancel(bufnr)
 end)
 
-bufcommand(bufnr, "AcpSetMode", function(cmd)
-	acp.set_mode(bufnr, cmd.args)
-end, {
-	nargs = 1,
-	desc = "Set ACP mode for this buffer",
-	complete = "custom,v:lua.require'acp'.acpsetmode_complete"
-})
-
-bufcommand(bufnr, "AcpViewDiff", function()
-	acp.view_diff(bufnr)
-end, {
-	desc = "View pending diffs in split windows"
-})
-
 -- Highlight all lines started with the prompt OCP `"\027]133;A\a` as sign ▶
 vim.schedule(function()
-	vim.cmd [[
+	vim.cmd([[
 		setl conceallevel=2
 		setl concealcursor=nivc
 		syntax match Conceal /\%x1b]133;A\%x07/ conceal cchar=▶
-	]]
+	]])
 end)
 
 vim.keymap.set("n", "[[", function()
@@ -54,10 +41,9 @@ vim.keymap.set("n", "]]", function()
 end, { buffer = bufnr, desc = "Go to next prompt" })
 
 vim.b.undo_ftplugin = table.concat({
-    vim.b.undo_ftplugin or "",
+	vim.b.undo_ftplugin or "",
 	"setlocal buftype< bufhidden< swapfile< conceallevel< concealcursor",
-    "delcommand -buffer AcpSetMode",
-    "lua vim.treesitter.stop(" .. bufnr .. ")",
+	"lua vim.treesitter.stop(" .. bufnr .. ")",
 	"nunmap <buffer> [[",
 	"nunmap <buffer> ]]",
 }, "\n")

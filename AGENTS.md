@@ -2,6 +2,8 @@
 
 acp.nvim is a plugin that implement the [Agent Client Protocol](https://agentclientprotocol.com/) client for Neovim. It allows you to interact with agents that support the protocol, such as `gemini`, `opencode` and more.
 
+See also [CONTRIBUTING.md](CONTRIBUTING.md)
+
 ## Critical
 
 ALWAYS read file before attempting to write it.
