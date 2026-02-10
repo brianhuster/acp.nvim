@@ -52,16 +52,15 @@ function M.configMcp2McpServer(mcp_config)
 	return result
 end
 
----@param bufnr number
+---@param buf number
 ---@param text string
----@param winid? number Optional window ID to scroll
-function M.append_text(bufnr, text, winid)
-    if not api.nvim_buf_is_valid(bufnr) then
+function M.append_text(buf, text)
+    if not api.nvim_buf_is_valid(buf) then
         return
     end
 
     -- Get the prompt line position using the ': mark
-    local prompt_pos = api.nvim_buf_get_mark(bufnr, ":")
+    local prompt_pos = api.nvim_buf_get_mark(buf, ":")
     local prompt_line = prompt_pos[1] -- 1-indexed line number
 
     -- Get the line just before the prompt (where we append content)
@@ -69,12 +68,12 @@ function M.append_text(bufnr, text, winid)
 
     if content_line_idx < 0 then
         -- No content line exists yet, insert a new line before prompt
-        api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+        api.nvim_buf_set_lines(buf, 0, 0, false, { "" })
         content_line_idx = 0
     end
 
     -- Get the current content of that line
-    local current_line = api.nvim_buf_get_lines(bufnr, content_line_idx, content_line_idx + 1, false)[1] or ""
+    local current_line = api.nvim_buf_get_lines(buf, content_line_idx, content_line_idx + 1, false)[1] or ""
 
     -- Append the new text to the current line
     local new_text = current_line .. text
@@ -83,30 +82,42 @@ function M.append_text(bufnr, text, winid)
     local lines = vim.split(new_text, "\n", { plain = true })
 
     -- Replace the current line and add any additional lines
-    api.nvim_buf_set_lines(bufnr, content_line_idx, content_line_idx + 1, false, lines)
+    api.nvim_buf_set_lines(buf, content_line_idx, content_line_idx + 1, false, lines)
 
-    -- Auto-scroll if window is provided and valid
-    if winid and api.nvim_win_is_valid(winid) then
-        local total_lines = api.nvim_buf_line_count(bufnr)
-        local last_visible_line = fn.line("w$", winid)
+	for _, win in ipairs(api.nvim_list_wins()) do
+		if api.nvim_win_get_buf(win) == buf then
+			local total_lines = api.nvim_buf_line_count(buf)
+			local last_visible_line = fn.line("w$", win)
 
-        -- Only auto-scroll if user was already at bottom
-        if last_visible_line >= total_lines - 1 then
-            api.nvim_win_set_cursor(winid, { total_lines, 0 })
-        end
-    end
+			-- Only auto-scroll if user was already at bottom
+			if last_visible_line >= total_lines - 1 then
+				api.nvim_win_set_cursor(win, { total_lines, 0 })
+			end
+		end
+	end
 end
 
 ---@param path string
 ---@return boolean, string
 function M.valid_file_path(path)
-    if fn.isabsolutepath(path) ~= 1 then
-        return false, ("Path %s is not an absolute path"):format(path)
-    end
-    if fn.filereadable(path) ~= 1 then
-        return false, ("File %s does not exist or is not readable"):format(path)
-    end
-    return true, ""
+	if fn.isabsolutepath(path) ~= 1 then
+		return false, ("Path %s is not an absolute path"):format(path)
+	end
+	if fn.filereadable(path) ~= 1 then
+		return false, ("File %s does not exist or is not readable"):format(path)
+	end
+	return true, ""
+end
+
+--- Get or create the buffer for the given agent and session
+---@param agent_name string
+---@param session_id string
+---@param create? true whether to create the buffer if it doesn't exist
+---@return number?
+function M.get_acpchat_buf(agent_name, session_id, create)
+	local bufname = ("acp://%s/%s"):format(agent_name, session_id)
+	local buf = fn.bufnr(bufname, create)
+	return buf > -1 and buf or nil
 end
 
 return M

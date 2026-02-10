@@ -183,13 +183,13 @@ function SchemaConverter:process_type(type_name, type_schema)
             if variant.title or variant.properties then
                 local variant_suffix = variant.title or tostring(i)
                 local variant_name = type_name .. "_" .. variant_suffix
-                
+
                 self:add_line("")
                 if variant.description then self:add_line("---" .. variant.description:gsub("\n", " ")) end
                 local class_def = "---@class acp." .. variant_name
                 if parent_ref then class_def = class_def .. " : acp." .. parent_ref end
                 self:add_line(class_def)
-                
+
                 if variant.properties then
                     local req = {}
                     if variant.required then for _, f in ipairs(variant.required) do req[f] = true end end

@@ -21,14 +21,16 @@ local client_methods = meta.clientMethods
 ---@field agent_name string
 ---@field client acp.rpc.Client
 ---@field session_id string
----@field window? number
 ---@field modes? acp.SessionModeState
----@field pending_permissions table<number, { options: acp.PermissionOption[], response: fun(result: any?, error: acp.rpc.Error?) }>
+---@field pending_permission { options: acp.PermissionOption[], response: fun(result: any?, error: acp.rpc.Error?) }>
 ---@field lastest_diff? acp.Diff
 ---@field available_commands? acp.AvailableCommand[]
 
 ---@type table<number, acp.Session>
 M.sessions = {}
+
+---@type table<string, acp.rpc.Client>
+M.agents = {}
 
 ---@type acp.Config
 local default_config = {
@@ -39,36 +41,32 @@ local default_config = {
 ---@type acp.Config
 M.config = vim.tbl_deep_extend("force", default_config, vim.g.acp or {})
 
----@param bufnr number
+---@param agent string
 ---@param method string
----@param params any
+---@param params acp.RequestPermissionRequest|acp.ReadTextFileRequest|acp.WriteTextFileRequest
 ---@param response fun(result: any?, error: acp.rpc.Error?)
-local function handle_server_request(bufnr, method, params, response)
-	local session = M.sessions[bufnr]
-	if not session then
-		response(nil, { code = -32603, message = "Session not found" })
-		return
-	end
+local function handle_server_request(agent, method, params, response)
+	local buf = utils.get_acpchat_buf(agent, params.sessionId)
 
 	if method == client_methods.session_request_permission then
-		---@type acp.RequestPermissionRequest
-		local p = params
+		local p = params --[[@as acp.RequestPermissionRequest ]]
 		local title = p.toolCall.title or "Unknown tool"
 		local options = p.options
+		local session = M.sessions[buf]
 
 		-- Store request context in the session
-		session.pending_permissions[bufnr] = { options = options, response = response }
-		vim.b[bufnr].acp_requesting_permission = true
+		session.pending_permission = { options = options, response = response }
+		vim.b.acp_requesting_permission = true
 
 		local lines = { "\n⚠️ Permission required: " .. title }
 		for i, o in ipairs(options) do
 			table.insert(lines, ("  %d. %s"):format(i, o.name))
 		end
 		table.insert(lines, "Type number to choose (or use :AcpViewDiff to review):")
-		utils.append_text(bufnr, table.concat(lines, "\n") .. " ")
+		utils.append_text(buf, table.concat(lines, "\n") .. " ")
+
 	elseif method == client_methods.fs_read_text_file then
-		---@type acp.ReadTextFileRequest
-        local p = params
+        local p = params --[[@as acp.ReadTextFileRequest ]]
         local path = p.path
         local path_valid, err = utils.valid_file_path(path)
 		if not path_valid then
@@ -76,15 +74,15 @@ local function handle_server_request(bufnr, method, params, response)
 			return
 		end
 
-		local bufnr_target = fn.bufnr(p.path)
+		local buf_to_read = fn.bufnr(p.path)
 
 		local content
 		local source = "file"
 
-		if bufnr_target ~= -1 and api.nvim_buf_is_loaded(bufnr_target) then
+		if buf_to_read ~= -1 and api.nvim_buf_is_loaded(buf_to_read) then
 			local start = (p.line or 1) - 1
 			local limit = p.limit or -1
-			local lines = api.nvim_buf_get_lines(bufnr_target, start, limit == -1 and -1 or start + limit, false)
+			local lines = api.nvim_buf_get_lines(buf_to_read, start, limit == -1 and -1 or start + limit, false)
 			content = table.concat(lines, "\n")
 			source = "buffer"
 		else
@@ -104,12 +102,11 @@ local function handle_server_request(bufnr, method, params, response)
 			end
 		end
 
-		utils.append_text(bufnr, ("[Read %s (%d bytes) from %s]\n"):format(path, #content, source))
+		utils.append_text(buf, ("[Read %s (%d bytes) from %s]\n"):format(path, #content, source))
 		response({ content = content })
 
 	elseif method == client_methods.fs_write_text_file then
-		---@type acp.WriteTextFileRequest
-		local p = params
+		local p = params --[[@as acp.WriteTextFileRequest ]]
         local path = p.path
         local path_valid, err = utils.valid_file_path(path)
         if not path_valid then
@@ -117,12 +114,12 @@ local function handle_server_request(bufnr, method, params, response)
             return
         end
 
-		local bufnr_target = fn.bufnr(path)
+		local buf_to_write = fn.bufnr(path)
 
-		if bufnr_target ~= -1 and api.nvim_buf_is_loaded(bufnr_target) then
+		if buf_to_write ~= -1 and api.nvim_buf_is_loaded(buf_to_write) then
 			local lines = vim.split(p.content, "\n", { plain = true })
-			api.nvim_buf_set_lines(bufnr_target, 0, -1, false, lines)
-			utils.append_text(bufnr, ("[Wrote %d bytes to buffer %s]\n"):format(#p.content, path))
+			api.nvim_buf_set_lines(buf_to_write, 0, -1, false, lines)
+			utils.append_text(buf, ("[Wrote %d bytes to buffer %s]\n"):format(#p.content, path))
 			response({})
 		else
 			local dir = fn.fnamemodify(path, ":h")
@@ -134,7 +131,7 @@ local function handle_server_request(bufnr, method, params, response)
 			end
 			f:write(p.content)
 			f:close()
-			utils.append_text(bufnr, ("[Wrote %d bytes to %s]\n"):format(#p.content, path))
+			utils.append_text(buf, ("[Wrote %d bytes to %s]\n"):format(#p.content, path))
 			response({})
 		end
 	else
@@ -142,35 +139,33 @@ local function handle_server_request(bufnr, method, params, response)
 	end
 end
 
----@param bufnr number
----@param _method string
+---@param agent string
+---@param method string
 ---@param params any
-local function handle_notification(bufnr, _method, params)
-	local session = M.sessions[bufnr]
-	if not session then return end
-
-	if _method == client_methods.session_update then
+local function handle_notification(agent, method, params)
+	if method == client_methods.session_update then
 		---@type acp.SessionNotification
 		local p = params
 		local u = p.update
+		local buf = utils.get_acpchat_buf(agent, p.sessionId)
+		local session = M.sessions[buf]
 
         if u.sessionUpdate == "agent_message_chunk" then
             local content = u.content
             if content and content.type == "text" then
-                utils.append_text(bufnr, content.text, session.window)
+                utils.append_text(buf, content.text)
             end
         elseif u.sessionUpdate == "tool_call" then
-            utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status or "pending"), session.window)
+            utils.append_text(buf, ("\n🔧 %s (%s)\n"):format(u.title, u.status or "pending"))
             for _, tc in ipairs(u.content or {}) do
                 if tc.content and tc.content.type == "text" then
-                    utils.append_text(bufnr, tc.content.text, session.window)
+                    utils.append_text(buf, tc.content.text)
                 elseif tc.newText then -- Diff
                     session.lastest_diff = tc --[[@as acp.Diff ]]
                     local old = tc.oldText or ""
                     local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
                     if diff ~= "" then
-                        utils.append_text(bufnr, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff),
-                            session.window)
+                        utils.append_text(buf, ("\n```diff\n--- %s\n+++ %s\n%s\n```\n"):format(tc.path, tc.path, diff))
                     end
                 end
             end
@@ -180,34 +175,33 @@ local function handle_notification(bufnr, _method, params)
             local has_content = u.content and #u.content > 0
 
             if has_title and has_status then
-                utils.append_text(bufnr, ("\n🔧 %s (%s)\n"):format(u.title, u.status), session.window)
+                utils.append_text(buf, ("\n🔧 %s (%s)\n"):format(u.title, u.status))
             elseif has_title then
-                utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.title), session.window)
+                utils.append_text(buf, ("\n🔧 %s\n"):format(u.title))
             elseif has_status and has_content then
-                utils.append_text(bufnr, ("\n🔧 %s\n"):format(u.status), session.window)
+                utils.append_text(buf, ("\n🔧 %s\n"):format(u.status))
             end
 
             for _, tc in ipairs(u.content or {}) do
                 if tc.content and tc.content.type == "text" then
-                    utils.append_text(bufnr, tc.content.text, session.window)
+                    utils.append_text(buf, tc.content.text)
                 elseif tc.newText then -- Diff
                     session.lastest_diff = tc
                     local old = tc.oldText or ""
                     local diff = vim.text.diff(old, tc.newText, { result_type = "unified" })
                     if diff ~= "" then
-						utils.append_text(bufnr,
+						utils.append_text(buf,
 							("\nTo see this diff in a split view, run `:AcpViewDiff`\n```diff\n--- %s\n+++ %s\n%s\n```\n")
-							:format(tc.path, tc.path, diff),
-                            session.window)
+							:format(tc.path, tc.path, diff))
                     end
                 end
             end
         elseif u.sessionUpdate == "plan" then
-            utils.append_text(bufnr, "[Plan update]\n", session.window)
+            utils.append_text(buf, "[Plan update]\n")
         elseif u.sessionUpdate == "agent_thought_chunk" then
             local content = u.content
             if content and content.type == "text" then
-                utils.append_text(bufnr, ("[Thought] %s\n"):format(content.text), session.window)
+                utils.append_text(buf, ("[Thought] %s\n"):format(content.text))
             end
         elseif u.sessionUpdate == "current_mode_update" then
             if session.modes and u.currentModeId then
@@ -220,8 +214,12 @@ local function handle_notification(bufnr, _method, params)
 end
 
 ---@param agent_name string
----@param bufnr number
-local function start_agent(agent_name, bufnr)
+---@return acp.rpc.Client?
+local function start_agent(agent_name)
+	if M.agents[agent_name] then
+		return M.agents[agent_name]
+	end
+
 	local agent_config = M.config.agents[agent_name]
 	if not agent_config then
 		vim.notify("No configuration found for agent: " .. agent_name, vim.log.levels.ERROR)
@@ -237,13 +235,18 @@ local function start_agent(agent_name, bufnr)
 		end,
 		on_exit = function(code, _)
 			vim.notify(("Agent '%s' exited with code %d"):format(agent_name, code), vim.log.levels.INFO)
-			M.sessions[bufnr] = nil
+			for buf, session in pairs(M.sessions) do
+				if session.agent_name == agent_name then
+					utils.append_text(buf, ("\n[Agent '%s' has exited]\n"):format(agent_name))
+					M.sessions[buf] = nil
+				end
+			end
 		end,
 		notification = function(_method, params)
-			handle_notification(bufnr, _method, params)
+			handle_notification(agent_name, _method, params)
 		end,
 		server_request = function(_id, method, params, response)
-			handle_server_request(bufnr, method, params, response)
+			handle_server_request(agent_name, method, params, response)
 		end,
 	}, { env = env })
 
@@ -253,19 +256,8 @@ end
 --- Start the ACP connection for a buffer
 ---@param agent_name string
 function M.new_session(agent_name)
-	local bufnr = api.nvim_create_buf(false, true)
-	local client = start_agent(agent_name, bufnr)
+	local client = start_agent(agent_name)
 	if not client then return end
-
-	M.sessions[bufnr] = {
-		agent_name = agent_name,
-		client = client,
-		session_id = "",
-		auto_approve = false,
-		pending_permissions = {},
-		lastest_diff = nil,
-		available_commands = {},
-	}
 
 	-- 1. Initialize
 	client.request(agent_methods.initialize, {
@@ -326,22 +318,39 @@ function M.new_session(agent_name)
                 return
             end
 
-			local session = M.sessions[bufnr]
-			session.session_id = new_sess_res.sessionId
-			session.modes = new_sess_res.modes
+			local session = {
+				agent_name = agent_name,
+				session_id = new_sess_res.sessionId,
+				modes = new_sess_res.modes,
+				pending_permission = {},
+				lastest_diff = nil,
+				available_commands = {},
+			}
+
+			setmetatable(session, {
+				__index = function(t, k)
+					if k == "client" then
+						return client
+					else
+						return rawget(t, k)
+					end
+				end,
+			})
+
+			local buf = utils.get_acpchat_buf(agent_name, session.session_id, true) --[[@as integer]]
+			M.sessions[buf] = session
 
 			-- Setup buffer and window
-			api.nvim_buf_set_name(bufnr, ("acp://%s/%s"):format(agent_name, session.session_id))
-			vim.cmd("vsplit")
+			api.nvim_buf_set_name(buf, ("acp://%s/%s"):format(agent_name, session.session_id))
+			vim.cmd.vsplit()
 			local win = api.nvim_get_current_win()
-			api.nvim_win_set_buf(win, bufnr)
-			session.window = win
+			api.nvim_win_set_buf(win, buf)
 
-			vim.bo[bufnr].filetype = "acpchat"
+			vim.bo[buf].filetype = "acpchat"
 			vim.wo[win].wrap = true
 			vim.wo[win].linebreak = true
 
-			utils.append_text(bufnr, "ACP session started. Agent: " .. agent_name .. "\n")
+			utils.append_text(buf, "ACP session started. Agent: " .. agent_name .. "\n")
 			vim.cmd("normal! G")
 			vim.cmd("startinsert")
 		end)
@@ -357,7 +366,7 @@ function M.prompt_callback(bufnr, text)
 
 	if vim.b[bufnr].acp_requesting_permission then
 		local choice = tonumber(text)
-		local pending = session.pending_permissions[bufnr]
+		local pending = session.pending_permission
 
 		if choice and pending and pending.options[choice] then
 			local option = pending.options[choice]
@@ -365,7 +374,7 @@ function M.prompt_callback(bufnr, text)
 			pending.response({ outcome = { outcome = "selected", optionId = option.optionId } })
 
 			-- Clear state
-			session.pending_permissions[bufnr] = nil
+			session.pending_permission[bufnr] = nil
 			vim.b[bufnr].acp_requesting_permission = false
 		else
 			utils.append_text(bufnr, "\n[Invalid choice. Please type a number from the list above]\n")
@@ -392,9 +401,21 @@ function M.send_prompt(bufnr, text)
 	session.client.request(agent_methods.session_prompt, {
 		sessionId = session.session_id,
 		prompt = { { type = "text", text = text } },
-	}, function(err, _res)
+		---@param err any
+		---@param res acp.PromptResponse
+	}, function(err, res)
 		if err then
 			utils.append_text(bufnr, "\nError: " .. vim.inspect(err) .. "\n")
+		end
+		if res and res.stopReason then
+			local stop_reasons = {
+				end_turn = "\n",
+				max_tokens = "\n[Stopped: Reached maximum token limit]\n",
+				max_turn_requests = "\n[Stopped: Reached maximum model requests in a single turn]\n",
+				refusal = "\n[Stopped: Agent refused to respond]\n",
+				user_cancel = "\n[Stopped: Operation cancelled by user]\n",
+			}
+			utils.append_text(bufnr, stop_reasons[res.stopReason])
 		end
 	end)
 end
@@ -427,7 +448,6 @@ function M.cancel(bufnr)
 	if not session or session.session_id == "" then return end
 
 	session.client.notify(agent_methods.session_cancel, { sessionId = session.session_id })
-	utils.append_text(bufnr, "Cancelled.\n")
 end
 
 --- View diff in a new tab with split windows
