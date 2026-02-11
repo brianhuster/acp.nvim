@@ -6,6 +6,8 @@ local acp = require("acp.core")
 vim.bo[bufnr].buftype = "prompt"
 vim.bo[bufnr].bufhidden = "hide"
 vim.bo[bufnr].swapfile = false
+vim.wo[0][0].wrap = true
+vim.wo[0][0].linebreak = true
 
 vim.treesitter.start(bufnr)
 
@@ -42,8 +44,8 @@ end, { buffer = bufnr, desc = "Go to next prompt" })
 
 vim.b.undo_ftplugin = table.concat({
 	vim.b.undo_ftplugin or "",
-	"setlocal buftype< bufhidden< swapfile< conceallevel< concealcursor",
-	"lua vim.treesitter.stop(" .. bufnr .. ")",
+	"setlocal buftype< bufhidden< swapfile< conceallevel< concealcursor< wrap< linebreak<",
 	"nunmap <buffer> [[",
 	"nunmap <buffer> ]]",
+	"lua vim.treesitter.stop(" .. bufnr .. ")",
 }, "\n")

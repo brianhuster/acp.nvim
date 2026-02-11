@@ -18,8 +18,12 @@ def vim():
 
     yield vim
 
+    assert vim.vvars["errmsg"] == ""
     vim.close()
     utils.clean()
+
+
+prompt = '\x1b]133;A\x07'
 
 
 def test_cmdline_completion(vim: Nvim):
@@ -37,18 +41,23 @@ def test_read(vim: Nvim):
     vim.api.buf_set_lines(0, 0, -1, False, ["line1", "line2", "line3"])
     vim.command("Acp new-session")
     time.sleep(0.5)
+
     vim.command("startinsert")
     feed_keys(vim, "/test_read<CR>")  # Run slash command `/test_read`
     time.sleep(0.5)
+
     vim.command("startinsert")
     feed_keys(vim, "1<CR>")  # Accept permission
     time.sleep(0.5)
 
+    vim.command("startinsert")
+    feed_keys(vim, "/test_text<CR>")
+    time.sleep(0.5)
+
     lines = vim.api.buf_get_lines(0, 0, -1, False)
     assert lines == [
-            'ACP session started. Agent: test',
-            '',
             '\x1b]133;A\x07 /test_read',
+            '',
             '🤖 I\'ll read the file "test-read.txt" for you using the file system client.',
             '🔧 Reading test-read.txt (pending)',
             '',
@@ -68,6 +77,10 @@ def test_read(vim: Nvim):
             '',
             '(End of file - total 3 lines)',
             '</file> Successfully read the file!',
+            '',
+            '\x1b]133;A\x07 /test_text',
+            '',
+            '🤖 This is a simple text response for testing. No file operations needed!',
             '',
             '\x1b]133;A\x07 ']
 
@@ -92,6 +105,25 @@ def test_write(vim: Nvim):
     # buffer
     import os
     assert not os.path.exists(file)
+
+
+@pytest.mark.flaky(reruns=3)
+def test_load_session(vim: Nvim):
+    vim.command("edit acp://test/123456789abc")
+    time.sleep(1.0)
+    lines = vim.api.buf_get_lines(0, 0, -1, False)
+    assert lines == [
+            '',
+            '',
+            f'{prompt} Hello!',
+            '',
+            'Hi! How are you?',
+            '',
+            f"{prompt} I'm fine, thank you. And you?",
+            '',
+            'Fine, thanks',
+            '\x1b]133;A\x07 ',
+    ]
 
 
 @pytest.mark.flaky(reruns=3)

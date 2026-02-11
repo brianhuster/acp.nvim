@@ -155,7 +155,12 @@ function SchemaConverter:process_property(prop_name, prop_schema, required)
 			end
 		end
 		lua_type = #types > 0 and table.concat(types, "|") or "any"
-	elseif prop_schema.type == "array" then
+	elseif
+		prop_schema.type == "array"
+		or (type(prop_schema.type) == "table" and vim.tbl_contains(prop_schema.type, "array"))
+	then
+		local is_nullable = type(prop_schema.type) == "table" and vim.tbl_contains(prop_schema.type, "null")
+
 		if prop_schema.items then
 			if prop_schema.items["$ref"] then
 				local ref = prop_schema.items["$ref"]:match("#/%$defs/(.+)")
@@ -169,6 +174,10 @@ function SchemaConverter:process_property(prop_name, prop_schema, required)
 			end
 		else
 			lua_type = "table[]"
+		end
+
+		if is_nullable then
+			lua_type = lua_type .. "|nil"
 		end
 	elseif prop_schema.const or prop_schema.enum then
 		lua_type = self:process_enum(prop_schema) or lua_type
@@ -245,24 +254,42 @@ function SchemaConverter:process_type(type_name, type_schema)
 				if variant.description then
 					self:add_line("---" .. variant.description:gsub("\n", " "))
 				end
-				local class_def = "---@class acp." .. variant_name
-				if parent_ref then
-					class_def = class_def .. " : acp." .. parent_ref
-				end
-				self:add_line(class_def)
 
-				if variant.properties then
-					local req = {}
-					if variant.required then
-						for _, f in ipairs(variant.required) do
-							req[f] = true
+				if variant.type == "array" then
+					local item_type = "table"
+					if variant.items then
+						if variant.items["$ref"] then
+							local ref = variant.items["$ref"]:match("#/%$defs/(.+)")
+							if ref then
+								item_type = "acp." .. ref
+							end
+						elseif variant.items.type then
+							item_type = self:json_type_to_lua(variant.items.type)
 						end
 					end
-					-- Ensure properties are sorted for deterministic output
-					local props = vim.tbl_keys(variant.properties)
-					table.sort(props)
-					for _, p_name in ipairs(props) do
-						self:add_line(self:process_property(p_name, variant.properties[p_name], req[p_name] or false))
+					self:add_line("---@alias acp." .. variant_name .. " " .. item_type .. "[]")
+				else
+					local class_def = "---@class acp." .. variant_name
+					if parent_ref then
+						class_def = class_def .. " : acp." .. parent_ref
+					end
+					self:add_line(class_def)
+
+					if variant.properties then
+						local req = {}
+						if variant.required then
+							for _, f in ipairs(variant.required) do
+								req[f] = true
+							end
+						end
+						-- Ensure properties are sorted for deterministic output
+						local props = vim.tbl_keys(variant.properties)
+						table.sort(props)
+						for _, p_name in ipairs(props) do
+							self:add_line(
+								self:process_property(p_name, variant.properties[p_name], req[p_name] or false)
+							)
+						end
 					end
 				end
 				table.insert(refs, "acp." .. variant_name)

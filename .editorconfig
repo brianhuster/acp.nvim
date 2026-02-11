@@ -1,6 +1,6 @@
-[**.lua]
+[*.lua]
 indent_style = tab
 
-[**.{txt,py}]
+[*.{txt,py}]
 indent_style = space
 indent_size = 4

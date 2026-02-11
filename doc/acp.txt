@@ -102,9 +102,12 @@ They can be run via stdio or connected to via HTTP/SSE.
 This plugin only provides the `:Acp` command, which has the following
 subcommands:
 
-:Acp new-session {agent_name} ~
+:Acp new-session [agent_name] ~
     Start a new chat session with the specified agent. This creates a new
     buffer with the `acpchat` filetype and opens it in a vertical split.
+
+    If `agent_name` is not provided, it uses the `default_agent` from the
+    config.
 
 :Acp set-mode {mode_id} ~
     (Buffer-local, only available if the agent supports mode) Change the

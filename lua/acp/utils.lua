@@ -47,7 +47,7 @@ end
 
 ---@param buf number
 ---@param text string
-function M.append_text(buf, text)
+function M.add_output(buf, text)
 	if not api.nvim_buf_is_valid(buf) then
 		return
 	end

@@ -130,14 +130,17 @@ vim.paste = (function(overridden)
 		if session and vim.bo[bufnr].filetype == "acpchat" then
 			local prompt_cap = session.client.agentCapabilities.promptCapabilities or {}
 			local data = M.get_image()
-			if not data then
-				return overridden(lines, phase)
+			if data then
+				if not prompt_cap[data.type] then
+					return utils.add_output(
+						bufnr,
+						("\n[Agent %s does not support %s]\n"):format(session.agent_name, data.type)
+					)
+				end
+				table.insert(session.pending_attachments, data)
+				utils.add_output(bufnr, ("\n[Attached %s from clipboard]\n"):format(data.type))
+				return
 			end
-			if not prompt_cap[data.type] then
-				utils.append_text(bufnr, ("\n[Agent %s does not support %s]\n"):format(session.agent_name, data.type))
-			end
-			table.insert(session.pending_attachments, data)
-			utils.append_text(bufnr, ("\n[Attached %s from clipboard]\n"):format(data.type))
 		end
 
 		return overridden(lines, phase)

@@ -16,7 +16,7 @@
 ---Optional annotations for the client. The client can use annotations to inform how objects are used or displayed
 ---@class acp.Annotations
 ---@field _meta table|nil? The _meta property is reserved by ACP to allow clients and agents to attach additional metadata to their interactions. Implementations MUST NOT make assumptions about values at these keys.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
----@field audience table|nil?
+---@field audience acp.Role[]|nil?
 ---@field lastModified string|nil?
 ---@field priority number|nil?
 
@@ -332,7 +332,7 @@
 ---Response from loading an existing session.
 ---@class acp.LoadSessionResponse
 ---@field _meta table|nil? The _meta property is reserved by ACP to allow clients and agents to attach additional metadata to their interactions. Implementations MUST NOT make assumptions about values at these keys.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
----@field configOptions table|nil? Initial session configuration options if supported by the Agent.
+---@field configOptions acp.SessionConfigOption[]|nil? Initial session configuration options if supported by the Agent.
 ---@field modes acp.SessionModeState|nil? Initial mode state if supported by the Agent  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 
 ---MCP capabilities supported by the agent
@@ -395,7 +395,7 @@
 ---See protocol docs: [Creating a Session](https://agentclientprotocol.com/protocol/session-setup#creating-a-session)
 ---@class acp.NewSessionResponse
 ---@field _meta table|nil? The _meta property is reserved by ACP to allow clients and agents to attach additional metadata to their interactions. Implementations MUST NOT make assumptions about values at these keys.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
----@field configOptions table|nil? Initial session configuration options if supported by the Agent.
+---@field configOptions acp.SessionConfigOption[]|nil? Initial session configuration options if supported by the Agent.
 ---@field modes acp.SessionModeState|nil? Initial mode state if supported by the Agent  See protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)
 ---@field sessionId acp.SessionId Unique identifier for the created session.  Used in all subsequent requests for this conversation.
 
@@ -639,10 +639,10 @@
 ---Possible values for a session configuration option.
 
 ---A flat list of options with no grouping.
----@class acp.SessionConfigSelectOptions_Ungrouped
+---@alias acp.SessionConfigSelectOptions_Ungrouped acp.SessionConfigSelectOption[]
 
 ---A list of options grouped under headers.
----@class acp.SessionConfigSelectOptions_Grouped
+---@alias acp.SessionConfigSelectOptions_Grouped acp.SessionConfigSelectGroup[]
 ---@alias acp.SessionConfigSelectOptions acp.SessionConfigSelectOptions_Ungrouped|acp.SessionConfigSelectOptions_Grouped
 
 ---Unique identifier for a session configuration option value.
@@ -861,9 +861,9 @@
 ---See protocol docs: [Updating](https://agentclientprotocol.com/protocol/tool-calls#updating)
 ---@class acp.ToolCallUpdate
 ---@field _meta table|nil? The _meta property is reserved by ACP to allow clients and agents to attach additional metadata to their interactions. Implementations MUST NOT make assumptions about values at these keys.  See protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)
----@field content table|nil? Replace the content collection.
+---@field content acp.ToolCallContent[]|nil? Replace the content collection.
 ---@field kind acp.ToolKind|nil? Update the tool kind.
----@field locations table|nil? Replace the locations collection.
+---@field locations acp.ToolCallLocation[]|nil? Replace the locations collection.
 ---@field rawInput any? Update the raw input.
 ---@field rawOutput any? Update the raw output.
 ---@field status acp.ToolCallStatus|nil? Update the execution status.

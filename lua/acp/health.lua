@@ -4,7 +4,7 @@ function M.check()
 	local acp = require("acp.core")
 	local health = vim.health
 
-	vim.health.start("acp.nvim")
+	vim.health.start("Check acp.nvim dependencies")
 
 	if vim.fn.has("nvim-0.12") == 1 then
 		health.ok("Neovim version is 0.12 or higher")
@@ -25,9 +25,9 @@ function M.check()
 		end
 	end
 
-	vim.health.info("List of working agents >lua")
+	vim.health.start("List of working agents")
 	vim.health.info(vim.inspect(acp.agents))
-	vim.health.info("List of working sessions >lua")
+	vim.health.start("List of working sessions")
 	vim.health.info(vim.inspect(acp.sessions))
 end
 

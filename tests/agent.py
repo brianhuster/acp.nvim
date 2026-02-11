@@ -20,6 +20,7 @@ from acp import (
     tool_content,
     tool_diff_content,
     update_agent_message_text,
+    update_user_message_text,
     update_tool_call,
 )
 from acp.helpers import (
@@ -65,7 +66,7 @@ class ExampleAgent(Agent):
     ) -> InitializeResponse:
         return InitializeResponse(
             protocol_version=PROTOCOL_VERSION,
-            agent_capabilities=AgentCapabilities(load_session=False),
+            agent_capabilities=AgentCapabilities(load_session=True),
             agent_info=Implementation(name="example-agent", title="Example Agent", version="0.1.0"),
         )
 
@@ -87,7 +88,7 @@ class ExampleAgent(Agent):
                 current_mode_id="ask",
                 available_modes=[
                     SessionMode(
-						id="ask", name="Ask", description="Request permission before making any changes"),
+                        id="ask", name="Ask", description="Request permission before making any changes"),
                     SessionMode(
                         id="architect",
                         name="Architect",
@@ -129,7 +130,38 @@ class ExampleAgent(Agent):
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         self._sessions[session_id] = AgentSession()
-        return LoadSessionResponse()
+
+        if session_id == "123456789abc":
+            await self._stream_history(session_id)
+
+        return LoadSessionResponse(
+            session_id=session_id,
+            modes=SessionModeState(
+                current_mode_id="ask",
+                available_modes=[
+                    SessionMode(
+                        id="ask", name="Ask", description="Request permission before making any changes"),
+                    SessionMode(
+                        id="architect",
+                        name="Architect",
+                        description="Design and plan software systems without implementation",
+                    ),
+                    SessionMode(id="code", name="Code", description="Write and modify code with full tool access"),
+                ],
+            ),
+        )
+
+    async def _stream_history(self, session_id: str) -> None:
+        updates = [
+            update_user_message_text("Hello!"),
+            update_agent_message_text("Hi! How are you?"),
+            update_user_message_text("I'm fine, thank you. And you?"),
+            update_agent_message_text("Fine, thanks"),
+        ]
+        for update in updates:
+            await self._conn.session_update(session_id=session_id, update=update)
+            await asyncio.sleep(0.01)
+
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> SetSessionModeResponse | None:
         await self._conn.session_update(session_id=session_id, update=update_current_mode(mode_id))
