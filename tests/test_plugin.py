@@ -67,7 +67,7 @@ def test_read(vim: Nvim):
             'Type number to choose: ',
             '\x1b]133;A\x07 1',
             '[Permission granted: Allow reading]',
-            f'[Read {os.path.abspath("Xtest/test-read.txt")} (17 bytes) from buffer]',
+            f'[Read {os.path.abspath("Xtest/test-read.txt")} (17 bytes)]',
             '',
             '🔧 completed',
             '<file>',
@@ -123,6 +123,36 @@ def test_load_session(vim: Nvim):
             '',
             'Fine, thanks',
             '\x1b]133;A\x07 ',
+    ]
+
+
+# @pytest.mark.flaky(reruns=3)
+def test_agent_plan(vim: Nvim):
+    vim.command("Acp new-session")
+    time.sleep(0.5)
+    vim.command("startinsert")
+    feed_keys(vim, "/test_plan<CR>")
+    time.sleep(0.5)
+
+    lines = vim.api.buf_get_lines(0, 0, -1, False)
+    assert lines == [
+        '\x1b]133;A\x07 /test_plan',
+        '',
+        '🤖 [Plan updated]',
+        '⏳ [HIGH] Analyze the existing codebase structure',
+        '⏳ [HIGH] Identify components that need refactoring',
+        '⏳ [MEDIUM] Create unit tests for critical functions',
+        '',
+        '',
+        '\x1b]133;A\x07 ',
+    ]
+
+    vim.command("Acp view-plan")
+    lines = vim.api.buf_get_lines(0, 0, -1, False)
+    assert lines == [
+        '⏳ [HIGH] Analyze the existing codebase structure',
+        '⏳ [HIGH] Identify components that need refactoring',
+        '⏳ [MEDIUM] Create unit tests for critical functions',
     ]
 
 

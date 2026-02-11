@@ -106,17 +106,102 @@ end
 ---@param agent_name string
 ---@param session_id string
 ---@param create? true whether to create the buffer if it doesn't exist
+---@param type "chat"|"plan"|"resources"
 ---@return number?
-function M.get_acpchat_buf(agent_name, session_id, create)
-	local bufname = ("acp://%s/%s"):format(agent_name, session_id)
+function M.get_acp_buf(agent_name, session_id, type, create)
+	local schemes = {
+		chat = "acp",
+		resources = "acp-resources",
+		plan = "acp-plan",
+	}
+	local bufname = ("%s://%s/%s"):format(schemes[type], agent_name, session_id)
 	local buf = fn.bufnr(bufname, create)
-	return buf > -1 and buf or nil
+	if buf < 0 then
+		return nil
+	end
+	if type ~= "chat" and create then
+		vim.bo[buf].buftype = 'nofile'
+	end
+	return buf
 end
 
-function M.get_acpplan_buf(agent_name, session_id, create)
-	local bufname = ("acp-plan://%s/%s"):format(agent_name, session_id)
-	local buf = fn.bufnr(bufname, create)
-	return buf > -1 and buf or nil
+if vim.fn.executable("file") == 1 then
+	---@type fun(content: string): string?
+	M.get_mimetype = function(content)
+		local res = vim.system({ "file", "--mime-type", "-b", "-" }, { stdin = content }):wait()
+		if res.code == 0 then
+			return vim.trim(res.stdout)
+		end
+	end
+else
+	M.get_mimetype = function()
+		return nil
+	end
+end
+
+---@param path string
+---@param opts? { line?: number, limit?: number }
+---@return string?
+function M.read_file(path, opts)
+	opts = opts or {}
+	local buf_to_read = fn.bufnr(path)
+
+	local content
+
+	if buf_to_read ~= -1 and api.nvim_buf_is_loaded(buf_to_read) then
+		local start = (opts.line or 1) - 1
+		local limit = opts.limit or -1
+		local lines = api.nvim_buf_get_lines(buf_to_read, start, limit == -1 and -1 or start + limit, false)
+		content = table.concat(lines, "\n")
+	else
+		local f = io.open(path, "r")
+		if not f then
+			return
+		end
+		content = f:read("*a")
+		f:close()
+		if opts.line or opts.limit then
+			local lines = vim.split(content, "\n", { plain = true })
+			local start = (opts.line or 1)
+			local end_idx = opts.limit and (start + opts.limit - 1) or #lines
+			content = vim.iter(lines):slice(start, end_idx):join("\n")
+		end
+	end
+	return content
+end
+
+---@param buf number
+---@param enter boolean
+---@param opts? vim.api.keyset.win_config
+---@return number win_id 0 if failed
+function M.open_win(buf, enter, opts)
+	local buf_line_count = api.nvim_buf_line_count(buf)
+	local default_opts = {
+		relative = "win",
+		win = api.nvim_get_current_win(),
+		row = 0,
+		col = 1,
+		width = api.nvim_win_get_width(0),
+		height = buf_line_count > 2 and buf_line_count or 2,
+		noautocmd = true,
+		border = vim.o.winborder ~= "" and vim.o.winborder or "rounded",
+	}
+	opts = vim.tbl_deep_extend("force", default_opts, opts or {})
+	local win_id = api.nvim_open_win(buf, enter, opts)
+	vim.wo[win_id].wrap = false
+	vim.keymap.set("n", "q", function()
+		api.nvim_win_close(win_id, true)
+	end, { buffer = buf, nowait = true, silent = true })
+
+	return win_id
+end
+
+--- Convert a file path to a URI. Unlike `vim.uri_from_fname`, this first
+--- normalizes and absolutizes the path before converting it to a URI.
+---@param path string
+---@return string
+function M.uri_from_fname(path)
+	return vim.uri_from_fname(vim.fs.abspath(vim.fs.normalize(path)))
 end
 
 return M

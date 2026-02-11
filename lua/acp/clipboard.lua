@@ -60,42 +60,7 @@ elseif vim.fn.has("mac") == 1 then
 	end
 elseif vim.fn.has("win32") == 1 then
 	M.get_image = function()
-		for _, v in ipairs(supported) do
-			local fmt = v.fmt
-			local cmd = [=[
-				Add-Type -AssemblyName System.Windows.Forms;
-				Add-Type -AssemblyName System.Drawing;
-				$d = [Windows.Forms.Clipboard]::GetDataObject();
-				if ($d.GetDataPresent(']=] .. fmt .. [=[')) {
-					$v = $d.GetData(']=] .. fmt .. [=[');
-					if ($v -is [System.Drawing.Image]) {
-						$ms = New-Object System.IO.MemoryStream;
-						$v.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png);
-						$bytes = $ms.ToArray();
-						[Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length);
-					} elseif ($v -is [System.IO.Stream]) {
-						$v.CopyTo([Console]::OpenStandardOutput());
-					} elseif ($v -is [byte[]]) {
-						[Console]::OpenStandardOutput().Write($v, 0, $v.Length);
-					}
-				}
-			]=]
-			local res = vim.system(
-				{ "powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", cmd },
-				{ text = false }
-			)
-				:wait()
-			if res.code == 0 and #res.stdout > 0 then
-				return {
-					type = v.type,
-					mimeType = v.mimeType,
-					data = vim.base64.encode(res.stdout),
-				}
-			end
-		end
-
-		-- Final fallback for Windows: use GetImage() which handles standard Bitmap formats
-		local fallback_cmd = [=[
+		local cmd = [=[
 			Add-Type -AssemblyName System.Windows.Forms;
 			Add-Type -AssemblyName System.Drawing;
 			if ([Windows.Forms.Clipboard]::ContainsImage()) {
@@ -106,10 +71,7 @@ elseif vim.fn.has("win32") == 1 then
 				[Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length);
 			}
 		]=]
-		local res = vim.system(
-			{ "powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", fallback_cmd },
-			{ text = false }
-		)
+		local res = vim.system({ "powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", cmd }, { text = false })
 			:wait()
 		if res.code == 0 and #res.stdout > 0 then
 			return {

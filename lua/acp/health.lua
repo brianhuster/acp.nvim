@@ -25,6 +25,12 @@ function M.check()
 		end
 	end
 
+	if vim.fn.executable("file") == 1 then
+		health.ok("`file` command is available for MIME type detection")
+	else
+		health.warn("`file` command is not available. acp.nvim won't be able to detect MIME types of embedded content")
+	end
+
 	vim.health.start("List of working agents")
 	vim.health.info(vim.inspect(acp.agents))
 	vim.health.start("List of working sessions")

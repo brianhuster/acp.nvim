@@ -109,6 +109,16 @@ subcommands:
     If `agent_name` is not provided, it uses the `default_agent` from the
     config.
 
+:Acp resources ~
+    (Buffer-local, only available if the agent supports context) Open a
+    floating window that shows resources (as file paths) sent to agents in the
+    next prompt. You can add more files by adding file paths to the buffer,
+    each path on a new line. You can remove any paths from the chat by
+    deleting the corresponding lines from the resources buffer.
+
+    TIP: You can use |i_CTRL-X_CTRL-F| in the resources buffer to get file
+    path completion.
+
 :Acp set-mode {mode_id} ~
     (Buffer-local, only available if the agent supports mode) Change the
     current mode of the agent (e.g., "ask", "code"). You can press `<Tab>` to
@@ -182,6 +192,60 @@ a different concept from |paste|, and |put| only works with text. See |paste|
 for more details.
 
 ==============================================================================
+5. Extend acp.nvim                                  *acp-expend* *acp-api*
+
+acp.nvim provides publish API that you can use to extend its functionality or
+integrate it with other plugins. To use the API, first require the module: >lua
+    local acp = require("acp")
+
+acp.config({opts})                                       *acp.config()*
+    Configure the plugin. See |acp-configuration| for details.
+
+acp.add_resource({buf}, {path})                         *acp.add_resource()*
+    Add a resource to the current session. This is used to provide additional
+    context (e.g., files) to the agent in the next prompt. The resource will be
+    removed after the next prompt is submitted.
+
+    Params:
+    - `buf` (number): Buffer number of the chat buffer.
+    - `path` (string): File path of the resource.
+
+    Returns:
+    - `success` (boolean): Whether the resource was added successfully.
+    - `error` (any)
+
+acp.register_subcommand({name}, {opts}) *acp.register_subcommand()*
+    Register a custom sub command for |:Acp|
+
+    Params:
+    - `name` (string): The name of the subcommand (must start with a non
+      alphanumeric character like `-`)
+    - `opts` (table): An object with the following fields:
+        - `callback` (function): A function that will be called when the
+          command is executed
+
+Example extension ~
+>lua
+    --- This is an example extension that allows users to use `fzf` to pick a file and add to resource
+    --- Requires the https://github.com/junegunn/fzf plugin
+    --- To use this, save to a file (e.g., `acp_fzf.lua`) in your `plugin/` directory in runtimepath
+    local acp = require("acp")
+    acp.register_subcommand("--add-resource-fzf", {
+        callback = function()
+            local buf = vim.api.nvim_get_current_buf()
+            vim.call("fzf#run", {
+                sink = function(selected)
+                    vim.print(selected)
+                    local result, err = acp.add_resource(buf, selected)
+                    if not result then
+                        vim.notify("Failed to add resource: " .. vim.inspect(err), vim.log.levels.ERROR)
+                    end
+                end
+            })
+        end
+    })
+
+
 CONTRIBUTING                                            *acp-contributing*
 
 Bug reports, feature requests, and patches are welcome:

@@ -40,6 +40,8 @@ from acp.schema import (
     SessionModeState,
     SseMcpServer,
     ToolCallUpdate,
+    AgentPlanUpdate,
+    PlanEntry
 )
 
 
@@ -116,6 +118,10 @@ class ExampleAgent(Agent):
                             description="Test file write operation with diff",
                             input={"hint": "[filename]"},
                         ),
+                        AvailableCommand(
+                            name="test_plan",
+                            description="Test updating plan",
+                        )
                     ]
                 ),
             )
@@ -217,6 +223,17 @@ class ExampleAgent(Agent):
         elif cmd == "/test_write":
             filename = args[0] if args else "Xtest/test-write.txt"
             await self.handle_write_test(session_id, filename)
+        elif cmd == "/test_plan":
+            await self._conn.session_update(
+                session_id=session_id,
+                update=AgentPlanUpdate(sessionUpdate="plan",
+                    entries=[
+                        PlanEntry(content="Analyze the existing codebase structure", priority="high", status="pending"),
+                        PlanEntry(content="Identify components that need refactoring", priority="high", status="pending"),
+                        PlanEntry(content="Create unit tests for critical functions", priority="medium", status="pending")
+                    ]
+                )
+            )
         else:
             await self._conn.session_update(
                 session_id=session_id,

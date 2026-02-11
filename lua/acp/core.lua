@@ -30,7 +30,7 @@ M.config = require("acp.config").config
 ---@param params acp.RequestPermissionRequest|acp.ReadTextFileRequest|acp.WriteTextFileRequest
 ---@param response fun(result: any?, error: acp.rpc.Error?)
 local function handle_server_request(agent, method, params, response)
-	local buf = utils.get_acpchat_buf(agent, params.sessionId)
+	local buf = utils.get_acp_buf(agent, params.sessionId, "chat")
 
 	if not buf then
 		response(nil, { code = rpc.code.internal_error, message = "Session buffer not found for agent: " .. agent })
@@ -62,35 +62,14 @@ local function handle_server_request(agent, method, params, response)
 			return
 		end
 
-		local buf_to_read = fn.bufnr(p.path)
+        local content = utils.read_file(p.path, p)
 
-		local content
-		local source = "file"
-
-		if buf_to_read ~= -1 and api.nvim_buf_is_loaded(buf_to_read) then
-			local start = (p.line or 1) - 1
-			local limit = p.limit or -1
-			local lines = api.nvim_buf_get_lines(buf_to_read, start, limit == -1 and -1 or start + limit, false)
-			content = table.concat(lines, "\n")
-			source = "buffer"
-		else
-			local f = io.open(p.path, "r")
-			if not f then
-				response(nil, { code = -32603, message = "Could not open file: " .. path })
-				return
-			end
-			content = f:read("*a")
-			f:close()
-
-			if p.line or p.limit then
-				local lines = vim.split(content, "\n", { plain = true })
-				local start = (p.line or 1)
-				local end_idx = p.limit and (start + p.limit - 1) or #lines
-				content = table.concat(iter(lines):slice(start, end_idx):totable(), "\n")
-			end
+		if not content then
+			response(nil, { code = -32603, message = "Could not read file: " .. path })
+			return
 		end
 
-		utils.add_output(buf, ("[Read %s (%d bytes) from %s]\n"):format(path, #content, source))
+		utils.add_output(buf, ("[Read %s (%d bytes)]\n"):format(path, #content))
 		response({ content = content })
 	elseif method == client_methods.fs_write_text_file then
 		local p = params --[[@as acp.WriteTextFileRequest ]]
@@ -134,7 +113,7 @@ local function handle_notification(agent, method, params)
 		---@type acp.SessionNotification
 		local p = params
 		local u = p.update
-		local buf = utils.get_acpchat_buf(agent, p.sessionId)
+		local buf = utils.get_acp_buf(agent, p.sessionId, "chat")
 		if not buf then
 			return
 		end
@@ -198,7 +177,24 @@ local function handle_notification(agent, method, params)
 				end
 			end
 		elseif u.sessionUpdate == "plan" then
-			utils.add_output(buf, "[Plan update]\n")
+			utils.add_output(buf, "[Plan updated]\n")
+			local entries = u.entries
+			---@param e acp.PlanEntry
+			local lines = vim.tbl_map(function(e)
+				local status_icons = {
+					pending = "⏳",
+					in_progress = "🔄",
+					completed = "✅",
+				}
+				local icon = status_icons[e.status]
+				return string.format("%s [%s] %s", icon, e.priority:upper(), e.content)
+			end, entries)
+
+			utils.add_output(buf, table.concat(lines, "\n") .. "\n")
+
+			local plan_buf = utils.get_acp_buf(agent, p.sessionId, "plan", true) --[[@as integer]]
+			api.nvim_buf_set_lines(plan_buf, 0, -1, false, lines)
+
 		elseif u.sessionUpdate == "agent_thought_chunk" then
 			local content = u.content
 			if content and content.type == "text" then
@@ -298,7 +294,7 @@ function M.create_or_load_session(agent_name, session_id)
 	}
 
 	local function setup_chatbuf()
-		buf = utils.get_acpchat_buf(agent_name, session.sessionId, true) --[[@as integer]]
+		buf = utils.get_acp_buf(agent_name, session.sessionId, "chat", true) --[[@as integer]]
 		M.sessions[buf] = session
 
 		local found_win = false
@@ -392,26 +388,42 @@ function M.create_or_load_session(agent_name, session_id)
 	end)
 end
 
-local function add_context(file)
+---@param path string
+---@return acp.ContentBlock_5?
+local function get_resource(path)
 	local buf = api.nvim_get_current_buf()
 	local session = M.sessions[buf]
 	if not session then
 		return
 	end
 
-	session.client.request(agent_methods.session_add_context, {
-		sessionId = session.sessionId,
-		contextBlocks = {
-			{
-				type = "file",
-				path = file,
-			},
+	local client = session.client
+	if not vim.tbl_get(client, "agentCapabilities", "promptCapabilities", "embeddedContext") then
+		return
+	end
+
+	local result = {
+		type = "resource",
+		resource = {
+			uri = utils.uri_from_fname(path),
 		},
-	}, function(err, _)
-		if err then
-			vim.notify("Failed to add context: " .. vim.inspect(err), vim.log.levels.ERROR)
-		end
-	end)
+	}
+
+	local content = utils.read_file(path)
+
+	if not content then
+		vim.notify("Could not read file: " .. path, vim.log.levels.ERROR)
+		return
+	end
+	local is_binary = content:find("\0") ~= nil
+	if is_binary then
+		result.resource.blob = vim.base64.encode(content)
+	else
+		result.resource.text = content
+	end
+
+	result.resource.mimeType = require("acp.utils").get_mimetype(content)
+	return result
 end
 
 -- Callback for the prompt buffer
@@ -455,17 +467,36 @@ function M.send_prompt(bufnr, text)
 		return
 	end
 
+	local agent, session_id = session.agent_name, session.sessionId
+
 	---@type acp.ContentBlock[]
 	local prompt = {}
 	if text ~= "" then
 		prompt = { { type = "text", text = text } }
 	end
-	prompt = vim.tbl_deep_extend("force", prompt, session.pending_attachments or {})
+	prompt = vim.list_extend(prompt, session.pending_attachments or {})
+	session.pending_attachments = {}
+
+	local resources_buf = utils.get_acp_buf(agent, session_id, "resources")
+	if resources_buf then
+		local lines = api.nvim_buf_get_lines(resources_buf, 0, -1, false)
+		lines = iter(lines):map(vim.trim):filter(function(line)
+			return line ~= ""
+		end):totable()
+		lines = vim.list.unique(lines)
+		for _, line in ipairs(lines) do
+			local res = get_resource(line)
+			if res then
+				table.insert(prompt, res)
+			end
+		end
+
+		-- Reset resources
+		api.nvim_buf_set_lines(resources_buf, 0, -1, false, {})
+	end
 	if #prompt == 0 then
 		return
 	end
-
-	session.pending_attachments = {}
 
 	session.client.request(agent_methods.session_prompt, {
 		sessionId = session.sessionId,
@@ -553,10 +584,10 @@ local function view_diff()
 end
 
 ---@class acp.SubCmd
----@field complete? fun(): string
+---@field complete? fun(arg_lead: string): string
 ---@field callback fun(args: string)
 ---@field condition? fun(): boolean
-local ex_subcmd = {
+M.ex_subcmd = {
 	["new-session"] = {
 		complete = function()
 			return iter(vim.tbl_keys(M.config.agents)):join("\n")
@@ -566,22 +597,18 @@ local ex_subcmd = {
 	["set-mode"] = {
 		complete = function()
 			local buf = api.nvim_get_current_buf()
-			local session = M.sessions[buf]
-			if not session or not session.modes then
+			local availableModes = vim.tbl_get(M.sessions, buf, "modes", "availableModes")
+			if not availableModes then
 				return ""
 			end
-			return iter(session.modes.availableModes):map(function(mode)
+			return iter(availableModes):map(function(mode)
 				return mode.id
 			end):join("\n")
 		end,
 		callback = set_mode,
 		condition = function()
 			local buf = api.nvim_get_current_buf()
-			local session = M.sessions[buf]
-			if session and session.modes then
-				return true
-			end
-			return false
+			return not not vim.tbl_get(M.sessions, buf, "modes", "availableModes")
 		end,
 		nargs = 1,
 	},
@@ -589,18 +616,62 @@ local ex_subcmd = {
 		callback = view_diff,
 		condition = function()
 			local buf = api.nvim_get_current_buf()
-			local session = M.sessions[buf]
-			if session and session.lastest_diff then
-				return true
-			end
-			return false
+			return not not vim.tbl_get(M.sessions, buf, "lastest_diff")
 		end,
 	},
-	["check-health"] = {
+	["resources"] = {
 		callback = function()
-			vim.cmd("checkhealth acp")
+			local buf = api.nvim_get_current_buf()
+			local session = M.sessions[buf]
+			if not session then
+				return
+			end
+			local resource_cap = vim.tbl_get(
+				session,
+				"client",
+				"agentCapabilities",
+				"promptCapabilities",
+				"embeddedContext"
+			)
+			if not resource_cap then
+				vim.notify(
+					("Agent %s does not support embedded context in prompts"):format(session.agent_name),
+					vim.log.levels.ERROR
+				)
+				return
+			end
+			local resources_buf = utils.get_acp_buf(session.agent_name, session.sessionId, "resources", true) --[[@as integer]]
+			utils.open_win(resources_buf, true, { title = ("Resources for ACP agent %s, session %s"):format(session.agent_name, session.sessionId) })
+		end,
+		condition = function()
+			local buf = api.nvim_get_current_buf()
+			return not not vim.tbl_get(
+				M.sessions,
+				buf,
+				"client",
+				"agentCapabilities",
+				"promptCapabilities",
+				"embeddedContext"
+			)
 		end,
 	},
+	["view-plan"] = {
+		callback = function()
+			local buf = api.nvim_get_current_buf()
+			local session = M.sessions[buf]
+			if not session then
+				return
+			end
+
+			local plan_buf = utils.get_acp_buf(session.agent_name, session.sessionId, "plan", true) --[[@as integer]]
+			local floatwin = utils.open_win(plan_buf, true, {
+				title = ("Plan for ACP agent %s, session %s"):format(session.agent_name, session.sessionId),
+			})
+		end,
+		condition = function()
+			return vim.bo.filetype == "acpchat"
+		end,
+	}
 }
 
 ---@param arg_lead string
@@ -612,13 +683,13 @@ function M.ex_complete(arg_lead, cmd_line, cursor_pos)
 	local args = cmd.args or {}
 	local result = ""
 	if #args == 0 or (#args == 1 and arg_lead ~= "") then
-		result = iter(vim.tbl_keys(ex_subcmd)):filter(function(sub)
-			return ex_subcmd[sub].condition == nil or ex_subcmd[sub].condition()
+		result = iter(vim.tbl_keys(M.ex_subcmd)):filter(function(sub)
+			return M.ex_subcmd[sub].condition == nil or M.ex_subcmd[sub].condition()
 		end):join("\n")
 	elseif #args == 1 or (#args == 2 and arg_lead ~= "") then
 		local subcmd = args[1]
-		if ex_subcmd[subcmd] and ex_subcmd[subcmd].complete then
-			result = ex_subcmd[subcmd].complete()
+		if M.ex_subcmd[subcmd] and M.ex_subcmd[subcmd].complete then
+			result = M.ex_subcmd[subcmd].complete(arg_lead)
 		end
 	end
 	return vim.fn.escape(result, [[ \]])
@@ -628,12 +699,12 @@ end
 function M.ex(fargs)
 	local subcmd = fargs[1]
 	local arg = fargs[2]
-	if ex_subcmd[subcmd] and ex_subcmd[subcmd].callback then
-		if not arg and ex_subcmd[subcmd].nargs == 1 then
+	if M.ex_subcmd[subcmd] and M.ex_subcmd[subcmd].callback then
+		if not arg and M.ex_subcmd[subcmd].nargs == 1 then
 			vim.notify("Argument required for subcommand " .. subcmd, vim.log.levels.ERROR)
 			return
 		end
-		ex_subcmd[subcmd].callback(arg)
+		M.ex_subcmd[subcmd].callback(arg)
 	else
 		vim.notify("Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
 	end
