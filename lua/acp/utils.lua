@@ -1,5 +1,8 @@
 local M = {}
 local api, fn = vim.api, vim.fn
+local config = require("acp.config").config
+
+local log_path
 
 ---@param env acp.config.Env
 ---@return acp.EnvVariable[]
@@ -95,6 +98,9 @@ end
 function M.valid_file_path(path)
 	if fn.isabsolutepath(path) ~= 1 then
 		return false, ("Path %s is not an absolute path"):format(path)
+	end
+	if not vim.fs.relpath(vim.fn.getcwd(), path) then
+		return false, "Agents are not allowed to access paths outside the current working directory"
 	end
 	if fn.filereadable(path) ~= 1 and vim.fn.bufnr(path) < 0 then
 		return false, ("File %s does not exist or is not readable"):format(path)
@@ -202,6 +208,39 @@ end
 ---@return string
 function M.uri_from_fname(path)
 	return vim.uri_from_fname(vim.fs.abspath(vim.fs.normalize(path)))
+end
+
+---@return string
+function M.get_log_path()
+	if not log_path then
+		log_path = vim.fn.stdpath("log") .. "/acp.log"
+	end
+	return log_path
+end
+
+if config.debug then
+	---@param table table
+	function M.log(table)
+		local content = vim.inspect(table, {
+			process = function(item)
+				if type(item) == "string" then
+					local len = #item
+					if len > 80 then
+						return item:sub(1, 80) .. ("[...+%d bytes]"):format(len - 80)
+					else
+						return item
+					end
+				end
+			end,
+		})
+		local file = io.open(M.get_log_path(), "a")
+		if file then
+			file:write(("[%s][%s] %s\n"):format("DEBUG", os.date("%Y-%m-%d %H:%M:%S"), content))
+			file:close()
+		end
+	end
+else
+	M.log = function() end
 end
 
 return M

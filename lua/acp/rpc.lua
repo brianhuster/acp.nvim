@@ -59,6 +59,7 @@ function M.start(cmd, dispatchers, opts)
 			response.result = result or {}
 		end
 
+		require("acp.utils").log(response)
 		system_obj:write(vim.json.encode(response) .. "\n")
 		return true
 	end
@@ -86,6 +87,7 @@ function M.start(cmd, dispatchers, opts)
 						dispatchers.on_error(1, "Invalid JSON: " .. line)
 					end
 				else
+					require("acp.utils").log(msg)
 					-- Dispatch message
 					if msg.method and msg.id then
 						-- Request from agent (has method AND id)
@@ -164,12 +166,15 @@ function M.start(cmd, dispatchers, opts)
 			state.next_id = state.next_id + 1
 			state.pending[id] = callback
 
-			system_obj:write(vim.json.encode({
+			local message = {
 				jsonrpc = "2.0",
 				id = id,
 				method = method,
 				params = params,
-			}) .. "\n")
+			}
+
+			system_obj:write(vim.json.encode(message) .. "\n")
+			require("acp.utils").log(message)
 
 			return true, id
 		end,
@@ -181,11 +186,14 @@ function M.start(cmd, dispatchers, opts)
 				return false
 			end
 
-			system_obj:write(vim.json.encode({
+			local message = {
 				jsonrpc = "2.0",
 				method = method,
 				params = params,
-			}) .. "\n")
+			}
+
+			system_obj:write(vim.json.encode(message) .. "\n")
+			require("acp.utils").log(message)
 
 			return true
 		end,

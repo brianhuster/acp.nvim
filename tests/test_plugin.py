@@ -31,6 +31,7 @@ def test_cmdline_completion(vim: Nvim):
     """
     candidates = vim.funcs.getcompletion("Acp ", "cmdline")
     assert "new-session" in candidates
+    assert "--dumb" in candidates
 
 
 @pytest.mark.flaky(reruns=3)

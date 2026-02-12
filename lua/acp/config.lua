@@ -14,6 +14,7 @@
 ---@field agents? table<string, acp.config.Agent> Mapping of agent names to their configurations
 ---@field mcp? acp.config.Mcp Mapping of context server names to their configurations
 ---@field default_agent? string Name of the default agent to use when starting a session without specifying an agent
+---@field debug? boolean Whether to enable debug logging (default: false)
 
 local M = {}
 

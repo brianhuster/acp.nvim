@@ -25,14 +25,11 @@ jobs:
         version: ${{ matrix.nvim_version }}
 
     - if: runner.os == 'Linux'
-      name: Install test dependencies (Linux)
-      run: |
-        sudo apt install xclip
-        sudo apt install xvfb
-
-    - if: runner.os == 'Linux'
       name: Run tests (Linux)
-      run: xvfb-run -a make test
+      run: |
+        # How can I test on Wayland?
+        sudo apt install xclip xvfb
+        xvfb-run -a make test
 
     - if: runner.os != 'Linux'
       name: Run tests (Non Linux)

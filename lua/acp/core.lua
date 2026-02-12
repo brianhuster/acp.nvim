@@ -665,7 +665,7 @@ M.ex_subcmd = {
 			end
 
 			local plan_buf = utils.get_acp_buf(session.agent_name, session.sessionId, "plan", true) --[[@as integer]]
-			local floatwin = utils.open_win(plan_buf, true, {
+			utils.open_win(plan_buf, true, {
 				title = ("Plan for ACP agent %s, session %s"):format(session.agent_name, session.sessionId),
 			})
 		end,
@@ -674,6 +674,12 @@ M.ex_subcmd = {
 		end,
 	},
 }
+
+setmetatable(M.ex_subcmd, {
+	__index = function(_, k)
+		return require("acp").subcommands[k]
+	end,
+})
 
 ---@param arg_lead string
 ---@param cmd_line string

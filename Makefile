@@ -11,7 +11,7 @@ schema:
 
 test:
 	uv sync
-	uv run pytest -s -vv
+	uv run pytest -s -vv $(TEST_FILE)
 
 lint:
 	nvim --clean -l scripts/luals.lua

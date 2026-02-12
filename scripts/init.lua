@@ -37,3 +37,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		end
 	end,
 })
+
+require("acp").register_subcommand("--dumb", {
+	callback = function() end,
+})

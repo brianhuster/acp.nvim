@@ -32,6 +32,7 @@ agents can use to provide additional context and tools. See |acp.config.Mcp| for
 details.
 - `default_agent` (string) (optional): The name of the default agent to use
 when you run `:Acp new-session` without specifying an agent.
+- `debug` (boolean) (optional): Enable debug logging. Default is `false`.
 
 Example configuration: >lua
     require("acp").config({
@@ -58,6 +59,7 @@ Example configuration: >lua
             }
         },
         default_agent = "opencode"
+        debug = false
     })
 <
 ------------------------------------------------------------------------------
@@ -183,18 +185,16 @@ to use enable |lsp-completion| or use an auto-completion plugin like
 `blink.cmp`. You can also trigger completion manually with |i_CTRL-X_CTRL-O|.
 - Signature Help can be triggered with |i_CTRL-S|
 
-Pasting image/audio ~
+Pasting image ~
 
-If the agent supports it, you can |paste| images and audio directly into the
-chat buffer, by pressing `Ctrl-Shift-v` (macOS: CMD-v) in insert mode. Note
-that you cannot use |put| or |:put| command to paste images/audio, as |put| is
-a different concept from |paste|, and |put| only works with text. See |paste|
-for more details.
+If the agent supports it, you can |paste| images directly into the chat
+buffer. Note that |paste| is different from |put|, see |paste| document for
+details
 
 ==============================================================================
 5. Extend acp.nvim                                  *acp-expend* *acp-api*
 
-acp.nvim provides publish API that you can use to extend its functionality or
+|acp.nvim| provides publish API that you can use to extend its functionality or
 integrate it with other plugins. To use the API, first require the module: >lua
     local acp = require("acp")
 
@@ -223,6 +223,9 @@ acp.register_subcommand({name}, {opts}) *acp.register_subcommand()*
     - `opts` (table): An object with the following fields:
         - `callback` (function): A function that will be called when the
           command is executed
+        - `condition` (function): (optional) A function that returns a boolean
+          indicating whether the subcommand should be available. If not
+          provided, the subcommand is always available.
 
 Example extension ~
 >lua
@@ -235,13 +238,17 @@ Example extension ~
             local buf = vim.api.nvim_get_current_buf()
             vim.call("fzf#run", {
                 sink = function(selected)
-                    vim.print(selected)
                     local result, err = acp.add_resource(buf, selected)
                     if not result then
                         vim.notify("Failed to add resource: " .. vim.inspect(err), vim.log.levels.ERROR)
+                    else
+                        vim.notify("Resource added: " .. selected, vim.log.levels.INFO)
                     end
                 end
             })
+        end,
+        condition = function()
+            return vim.bo.filetype == "acpchat"
         end
     })
 
