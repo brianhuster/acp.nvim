@@ -120,7 +120,7 @@ function M.get_acp_buf(agent_name, session_id, type, create)
 		return nil
 	end
 	if type ~= "chat" and create then
-		vim.bo[buf].buftype = 'nofile'
+		vim.bo[buf].buftype = "nofile"
 	end
 	return buf
 end

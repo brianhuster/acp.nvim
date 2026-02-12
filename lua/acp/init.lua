@@ -14,7 +14,7 @@ M.add_resource = function(buf, path)
 		return false, "No active session for buffer " .. buf
 	end
 	local agent_name, session_id = session.agent_name, session.sessionId
-    local resource_cap = vim.tbl_get(session, "client", "agentCapabilities", "promptCapabilities", "embeddedContext")
+	local resource_cap = vim.tbl_get(session, "client", "agentCapabilities", "promptCapabilities", "embeddedContext")
 	if not resource_cap then
 		return false, ("Agent %s does not support resources"):format(agent_name)
 	end
@@ -23,7 +23,6 @@ M.add_resource = function(buf, path)
 	vim.api.nvim_buf_set_lines(resources_buf, -1, -1, false, { path })
 	return true
 end
-
 
 ---@param name string name of the subcommand, must start with a non-alphanumeric character (e.g "-list")
 ---@param opts { callback: function }

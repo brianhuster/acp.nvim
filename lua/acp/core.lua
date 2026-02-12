@@ -62,7 +62,7 @@ local function handle_server_request(agent, method, params, response)
 			return
 		end
 
-        local content = utils.read_file(p.path, p)
+		local content = utils.read_file(p.path, p)
 
 		if not content then
 			response(nil, { code = -32603, message = "Could not read file: " .. path })
@@ -194,7 +194,6 @@ local function handle_notification(agent, method, params)
 
 			local plan_buf = utils.get_acp_buf(agent, p.sessionId, "plan", true) --[[@as integer]]
 			api.nvim_buf_set_lines(plan_buf, 0, -1, false, lines)
-
 		elseif u.sessionUpdate == "agent_thought_chunk" then
 			local content = u.content
 			if content and content.type == "text" then
@@ -480,9 +479,12 @@ function M.send_prompt(bufnr, text)
 	local resources_buf = utils.get_acp_buf(agent, session_id, "resources")
 	if resources_buf then
 		local lines = api.nvim_buf_get_lines(resources_buf, 0, -1, false)
-		lines = iter(lines):map(vim.trim):filter(function(line)
-			return line ~= ""
-		end):totable()
+		lines = iter(lines)
+			:map(vim.trim)
+			:filter(function(line)
+				return line ~= ""
+			end)
+			:totable()
 		lines = vim.list.unique(lines)
 		for _, line in ipairs(lines) do
 			local res = get_resource(line)
@@ -626,13 +628,8 @@ M.ex_subcmd = {
 			if not session then
 				return
 			end
-			local resource_cap = vim.tbl_get(
-				session,
-				"client",
-				"agentCapabilities",
-				"promptCapabilities",
-				"embeddedContext"
-			)
+			local resource_cap =
+				vim.tbl_get(session, "client", "agentCapabilities", "promptCapabilities", "embeddedContext")
 			if not resource_cap then
 				vim.notify(
 					("Agent %s does not support embedded context in prompts"):format(session.agent_name),
@@ -641,7 +638,11 @@ M.ex_subcmd = {
 				return
 			end
 			local resources_buf = utils.get_acp_buf(session.agent_name, session.sessionId, "resources", true) --[[@as integer]]
-			utils.open_win(resources_buf, true, { title = ("Resources for ACP agent %s, session %s"):format(session.agent_name, session.sessionId) })
+			utils.open_win(
+				resources_buf,
+				true,
+				{ title = ("Resources for ACP agent %s, session %s"):format(session.agent_name, session.sessionId) }
+			)
 		end,
 		condition = function()
 			local buf = api.nvim_get_current_buf()
@@ -671,7 +672,7 @@ M.ex_subcmd = {
 		condition = function()
 			return vim.bo.filetype == "acpchat"
 		end,
-	}
+	},
 }
 
 ---@param arg_lead string
