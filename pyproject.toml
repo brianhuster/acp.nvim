@@ -6,8 +6,16 @@ requires-python = ">=3.12"
 dependencies = [
     "pynvim",
     "pytest",
-	"pytest-rerunfailures",
-	"agent-client-protocol",
-	"pyperclipimg",
-	"requests"
+    "pytest-rerunfailures",
+    "agent-client-protocol",
+    "requests",
+    "pyqt5>=5.15.11",
+    "pillow>=12.1.1",
+]
+
+[tool.uv]
+required-environments = [
+  "sys_platform == 'linux'",
+  "sys_platform == 'darwin'",
+  "sys_platform == 'win32'"
 ]

@@ -166,38 +166,50 @@ def test_modes(vim: Nvim):
 
 
 def test_clipboard(vim: Nvim):
-    import pyperclipimg as pci
-    from base64 import b64decode
+    import subprocess
+    import time
     import requests
-    from PIL import Image
     import io
+    from base64 import b64decode
+    from PIL import Image, ImageChops, ImageStat
 
+    # --- Download image ---
     img_file = "Xtest/test.png"
     url = "https://avatars.githubusercontent.com/u/6471485?s=48&v=4"
     response = requests.get(url)
     with open(img_file, "wb") as f:
         f.write(response.content)
 
-    pci.copy(img_file)
+    # --- Start clipboard owner in separate process ---
+    proc = subprocess.Popen(
+        ["uv", "run", "tests/clipboard_owner.py", "image", img_file]
+    )
 
-    vim.exec_lua("AcpClipboard = require 'acp.clipboard'")
-    res = vim.lua.AcpClipboard.get_image()
-    assert res is not None
-    assert res["type"] == "image"
-    assert res["mimeType"] == "image/png"
+    try:
+        # Give Qt time to start event loop and own clipboard.
+        time.sleep(1.5)
 
-    blob = b64decode(res["data"])
+        # --- Call Neovim ---
+        vim.exec_lua("AcpClipboard = require 'acp.clipboard'")
+        res = vim.lua.AcpClipboard.get_data()
 
-    img_expected = Image.open(io.BytesIO(response.content)).convert("RGB")
-    img_actual = Image.open(io.BytesIO(blob)).convert("RGB")
+        assert res is not None
+        assert res[0]["type"] == "image"
 
-    assert img_expected.size == img_actual.size
+        blob = b64decode(res[0]["data"])
 
-    from PIL import ImageChops, ImageStat
-    diff = ImageChops.difference(img_expected, img_actual)
-    stat = ImageStat.Stat(diff)
+        img_expected = Image.open(io.BytesIO(response.content)).convert("RGB")
+        img_actual = Image.open(io.BytesIO(blob)).convert("RGB")
 
-    # Average difference per channel across all pixels.
-    # A small value (e.g. < 5) indicates nearly identical images.
-    avg_diff = sum(stat.mean) / 3
-    assert avg_diff < 5, f"Images are too different: average pixel shift is {avg_diff}"
+        assert img_expected.size == img_actual.size
+
+        diff = ImageChops.difference(img_expected, img_actual)
+        stat = ImageStat.Stat(diff)
+
+        avg_diff = sum(stat.mean) / 3
+        assert avg_diff < 5, f"Images are too different: {avg_diff}"
+
+    finally:
+        # Kill clipboard owner
+        proc.terminate()
+        proc.wait(timeout=2)
