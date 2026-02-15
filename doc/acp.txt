@@ -185,11 +185,18 @@ to use enable |lsp-completion| or use an auto-completion plugin like
 `blink.cmp`. You can also trigger completion manually with |i_CTRL-X_CTRL-O|.
 - Signature Help can be triggered with |i_CTRL-S|
 
-Pasting image ~
+PASTING IMAGES ~
 
 If the agent supports it, you can |paste| images directly into the chat
 buffer. Note that |paste| is different from |put|, see |paste| document for
 details
+
+PASTING FILES ~
+
+Similar to pasting images, you can also copy files paths from your file
+explorer (Dolphin, Finder, etc) and paste them into the chat buffer. The
+plugin will automatically add these files as `resource` or `resource_link` for
+the next prompt, depending on the agent's capabilities.
 
 ==============================================================================
 5. Extend acp.nvim                                  *acp-expend* *acp-api*

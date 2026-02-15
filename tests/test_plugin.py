@@ -165,7 +165,7 @@ def test_modes(vim: Nvim):
     assert set(candidates) == set(['architect', 'ask', 'code'])
 
 
-def test_clipboard(vim: Nvim):
+def test_clipboard_image(vim: Nvim):
     import subprocess
     import time
     import requests
@@ -194,9 +194,9 @@ def test_clipboard(vim: Nvim):
         res = vim.lua.AcpClipboard.get_data()
 
         assert res is not None
-        assert res[0]["type"] == "image"
+        assert res["type"] == "image"
 
-        blob = b64decode(res[0]["data"])
+        blob = b64decode(res["data"])
 
         img_expected = Image.open(io.BytesIO(response.content)).convert("RGB")
         img_actual = Image.open(io.BytesIO(blob)).convert("RGB")
@@ -211,5 +211,41 @@ def test_clipboard(vim: Nvim):
 
     finally:
         # Kill clipboard owner
+        proc.terminate()
+        proc.wait(timeout=2)
+
+
+def test_clipboard_uri(vim: Nvim):
+    import subprocess
+    import time
+    from pathlib import Path
+
+    # Create dummy files because AppleScript's 'POSIX file' requires them to exist
+    paths = ["Xtest/file1.txt", "Xtest/file2.txt"]
+    for p in paths:
+        with open(p, "w") as f:
+            f.write("test")
+
+    proc = subprocess.Popen(
+        ["uv", "run", "tests/clipboard_owner.py", "uri", *paths],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+    try:
+        time.sleep(2.0)
+
+        # Check if process is still running and report error if it crashed
+        if proc.poll() is not None:
+            print(f"Clipboard owner exited early with code {proc.returncode}")
+            print(f"Output: {proc.stdout.read()}")
+            assert False, "Clipboard owner failed to start"
+
+        vim.exec_lua("AcpClipboard = require 'acp.clipboard'")
+        res = vim.lua.AcpClipboard.get_data()
+        assert res == [Path(f).absolute().as_uri() for f in paths]
+
+    finally:
         proc.terminate()
         proc.wait(timeout=2)

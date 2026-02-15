@@ -9,13 +9,14 @@ dependencies = [
     "pytest-rerunfailures",
     "agent-client-protocol",
     "requests",
-    "pyqt5>=5.15.11",
     "pillow>=12.1.1",
+    "pyqt6>=6.10.2",
+    "pyobjc-framework-Cocoa>=11.1; sys_platform == 'darwin'",
 ]
 
-[tool.uv]
-required-environments = [
-  "sys_platform == 'linux'",
-  "sys_platform == 'darwin'",
-  "sys_platform == 'win32'"
-]
+# [tool.uv]
+# required-environments = [
+#   "sys_platform == 'linux'",
+#   "sys_platform == 'darwin'",
+#   "sys_platform == 'win32'"
+# ]

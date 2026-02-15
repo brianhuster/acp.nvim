@@ -14,10 +14,6 @@ M.add_resource = function(buf, path)
 		return false, "No active session for buffer " .. buf
 	end
 	local agent_name, session_id = session.agent_name, session.sessionId
-	local resource_cap = vim.tbl_get(session, "client", "agentCapabilities", "promptCapabilities", "embeddedContext")
-	if not resource_cap then
-		return false, ("Agent %s does not support resources"):format(agent_name)
-	end
 
 	local resources_buf = require("acp.utils").get_acp_buf(agent_name, session_id, "resources", true) --[[@as integer]]
 	vim.api.nvim_buf_set_lines(resources_buf, -1, -1, false, { path })

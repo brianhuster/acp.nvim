@@ -1,6 +1,8 @@
 vim.cmd([[set rtp+=]] .. vim.fn.getcwd())
 
 vim.cmd([[
+let v:testing = 1
+
 set noswapfile
 set clipboard=unnamedplus
 set completeopt=menuone,noselect,preview,popup

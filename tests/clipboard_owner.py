@@ -1,8 +1,10 @@
 # X11 requires the application to run to keep the clipboard data available
 import sys
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QMimeData, QUrl
-from PyQt5.QtGui import QImage
+import os
+
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QMimeData, QUrl
+from PyQt6.QtGui import QImage
 
 app = QApplication(sys.argv)
 
@@ -27,22 +29,31 @@ if mode == "image":
     if image.isNull():
         print(f"Failed to load image from {paths[0]}")
         sys.exit(1)
+
     # Ensure consistent format for clipboard
-    # mime.setImageData(image)
-    mime.setImageData(image.convertToFormat(QImage.Format_RGB32))
+    image = image.convertToFormat(QImage.Format.Format_RGB32)
+    mime.setImageData(image)
+    app.clipboard().setMimeData(mime)
 
 elif mode == "uri":
-    urls = [QUrl.fromLocalFile(p) for p in paths]
-    mime.setUrls(urls)
+    abs_paths = [os.path.abspath(p) for p in paths]
+    if sys.platform == "darwin":
+        from AppKit import NSPasteboard, NSURL
+        pb = NSPasteboard.generalPasteboard()
+        pb.clearContents()
+        file_urls = [NSURL.fileURLWithPath_(p) for p in abs_paths]
+        pb.writeObjects_(file_urls)
+    else:
+        urls = [QUrl.fromLocalFile(p) for p in abs_paths]
+        mime.setUrls(urls)
+        app.clipboard().setMimeData(mime)
 
 elif mode == "text":
     mime.setText("\n".join(paths))
+    app.clipboard().setMimeData(mime)
 
 else:
     print("Invalid mode. Use: image | uri | text")
     sys.exit(1)
 
-clipboard = app.clipboard()
-clipboard.setMimeData(mime)
-
-app.exec_()
+app.exec()

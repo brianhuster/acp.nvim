@@ -398,7 +398,11 @@ local function get_resource(path)
 
 	local client = session.client
 	if not vim.tbl_get(client, "agentCapabilities", "promptCapabilities", "embeddedContext") then
-		return
+		return {
+			type = "resource_link",
+			uri = utils.uri_from_fname(path),
+			name = vim.fs.basename(path),
+		}
 	end
 
 	local result = {
@@ -412,7 +416,11 @@ local function get_resource(path)
 
 	if not content then
 		vim.notify("Could not read file: " .. path, vim.log.levels.ERROR)
-		return
+		return {
+			type = "resource_link",
+			uri = utils.uri_from_fname(path),
+			name = vim.fs.basename(path),
+		}
 	end
 	local is_binary = content:find("\0") ~= nil
 	if is_binary then
@@ -573,7 +581,6 @@ local function view_diff()
 
 	vim.cmd("tabnew")
 	vim.cmd("edit " .. fn.fnameescape(diff.path))
-	vim.cmd.edit(fn.tempname())
 	local original_win = api.nvim_get_current_win()
 	vim.wo[original_win].diff = true
 
