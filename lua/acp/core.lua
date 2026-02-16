@@ -290,6 +290,7 @@ local handlers = {
 		elseif u.sessionUpdate == "current_mode_update" then
 			if session.modes and u.currentModeId then
 				session.modes.currentModeId = u.currentModeId
+				vim.schedule(vim.cmd.redrawstatus)
 			end
 		elseif u.sessionUpdate == "available_commands_update" then
 			session.available_commands = u.availableCommands
@@ -403,6 +404,7 @@ function M.create_or_load_session(agent_name, session_id)
 		end
 	end
 	local buf
+
 	local session = {
 		agent_name = agent_name,
 		sessionId = session_id,

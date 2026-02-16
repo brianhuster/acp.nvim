@@ -246,6 +246,21 @@ function M.get_log_path()
 	return log_path
 end
 
+---@return string
+function M.get_status_line()
+	local win = vim.g.statusline_winid
+	local buf = api.nvim_win_get_buf(win)
+	local session = require("acp.core").sessions[buf]
+	if not session then
+		return ""
+	end
+	local current_mode = vim.tbl_get(session, "modes", "currentModeId")
+	return ("[ACP Chat] %s %s"):format(
+		session and session.agent_name,
+		current_mode and ("- Mode: " .. current_mode) or ""
+	)
+end
+
 if config.debug then
 	---@param table table
 	function M.log(table)
