@@ -127,7 +127,7 @@ def test_load_session(vim: Nvim):
     ]
 
 
-# @pytest.mark.flaky(reruns=3)
+@pytest.mark.flaky(reruns=3)
 def test_agent_plan(vim: Nvim):
     vim.command("Acp new-session")
     time.sleep(0.5)

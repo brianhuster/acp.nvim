@@ -4,6 +4,24 @@ local config = require("acp.config").config
 
 local log_path
 
+---@param sig_num number
+---@return string? name of the signal, or nil if not found
+function M.get_signal_name(sig_num)
+	-- Duyệt qua các hằng số của libuv để tìm tên tương ứng
+	for name, val in pairs(vim.uv.constants) do
+		if val == sig_num and name:match("^SIG") then
+			return name
+		end
+	end
+	return nil
+end
+
+---@return string
+function M.random_string()
+	local random_bytes = vim.uv.random(16) --[[@as string]]
+	return vim.base64.encode(random_bytes)
+end
+
 ---@param env acp.config.Env
 ---@return acp.EnvVariable[]
 function M.configEnv2EnvVariables(env)
@@ -12,6 +30,16 @@ function M.configEnv2EnvVariables(env)
 		table.insert(env_variables, { name = key, value = value })
 	end
 	return env_variables
+end
+
+---@param env_variables acp.EnvVariable[]
+---@return acp.config.Env
+function M.envVariables2ConfigEnv(env_variables)
+	local env = {}
+	for _, variable in ipairs(env_variables) do
+		env[variable.name] = variable.value
+	end
+	return env
 end
 
 ---@param headers acp.config.HttpHeader

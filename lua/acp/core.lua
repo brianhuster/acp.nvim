@@ -8,6 +8,12 @@ local rpc = require("acp.rpc")
 local agent_methods = meta.agentMethods
 local client_methods = meta.clientMethods
 
+---@class acp.SessionTerminal : acp.TerminalOutputResponse
+---@field id string
+---@field instance vim.SystemObj
+---@field outputByteLimit integer
+---@field on_exit fun(exitStatus: acp.TerminalExitStatus)
+
 ---@class acp.Session : acp.NewSessionResponse
 ---@field agent_name string
 ---@field client acp.rpc.Client
@@ -15,6 +21,7 @@ local client_methods = meta.clientMethods
 ---@field lastest_diff? acp.Diff
 ---@field available_commands? acp.AvailableCommand[]
 ---@field pending_attachments acp.ContentBlock[]
+---@field terminals table<string, acp.SessionTerminal>
 
 ---@type table<number, acp.Session>
 M.sessions = {}
@@ -25,20 +32,10 @@ M.agents = {}
 ---@type acp.Config
 M.config = require("acp.config").config
 
----@param agent string
----@param method string
----@param params acp.RequestPermissionRequest|acp.ReadTextFileRequest|acp.WriteTextFileRequest
----@param response fun(result: any?, error: acp.rpc.Error?)
-local function handle_server_request(agent, method, params, response)
-	local buf = utils.get_acp_buf(agent, params.sessionId, "chat")
-
-	if not buf then
-		response(nil, { code = rpc.code.internal_error, message = "Session buffer not found for agent: " .. agent })
-		return
-	end
-
-	if method == client_methods.session_request_permission then
-		local p = params --[[@as acp.RequestPermissionRequest ]]
+local handlers = {
+	---@param p acp.RequestPermissionRequest
+	---@param response fun(result: acp.RequestPermissionResponse?, error: acp.rpc.Error?)
+	[client_methods.session_request_permission] = function(buf, p, response)
 		local title = p.toolCall.title or "Unknown tool"
 		local options = p.options
 		local session = M.sessions[buf]
@@ -53,8 +50,11 @@ local function handle_server_request(agent, method, params, response)
 		end
 		table.insert(lines, "Type number to choose:")
 		utils.add_output(buf, table.concat(lines, "\n") .. " ")
-	elseif method == client_methods.fs_read_text_file then
-		local p = params --[[@as acp.ReadTextFileRequest ]]
+	end,
+
+	---@param p acp.ReadTextFileRequest
+	---@param response fun(result: acp.ReadTextFileResponse?, error: acp.rpc.Error?)
+	[client_methods.fs_read_text_file] = function(buf, p, response)
 		local path = p.path
 		local path_valid, err = utils.valid_file_path(path)
 		if not path_valid then
@@ -71,8 +71,11 @@ local function handle_server_request(agent, method, params, response)
 
 		utils.add_output(buf, ("[Read %s (%d bytes)]\n"):format(path, #content))
 		response({ content = content })
-	elseif method == client_methods.fs_write_text_file then
-		local p = params --[[@as acp.WriteTextFileRequest ]]
+	end,
+
+	---@param p acp.WriteTextFileRequest
+	---@param response fun(result: acp.WriteTextFileResponse?, error: acp.rpc.Error?)
+	[client_methods.fs_write_text_file] = function(buf, p, response)
 		local path = p.path
 		local path_valid, err = utils.valid_file_path(path)
 		if not path_valid then
@@ -100,23 +103,108 @@ local function handle_server_request(agent, method, params, response)
 			utils.add_output(buf, ("[Wrote %d bytes to %s]\n"):format(#p.content, path))
 			response({})
 		end
-	else
-		response(nil, { code = -32601, message = "Method not found: " .. method })
-	end
-end
+	end,
 
----@param agent string
----@param method string
----@param params any
-local function handle_notification(agent, method, params)
-	if method == client_methods.session_update then
-		---@type acp.SessionNotification
+	---@param p acp.CreateTerminalRequest
+	---@param response fun(result: acp.CreateTerminalResponse?, error: acp.rpc.Error?)
+	[client_methods.terminal_create] = function(buf, p, response)
+		local cmd = p.args or {}
+		table.insert(cmd, 1, p.command)
+		local term_id = utils.random_string()
+		if M.sessions[buf].terminals[term_id] then
+			term_id = utils.random_string()
+		end
+		local terminal = {
+			id = term_id,
+			output = "",
+			outputByteLimit = p.outputByteLimit or 10000,
+		}
+		M.sessions[buf].terminals[term_id] = terminal
+
+		local instance = vim.system(cmd, {
+			text = true,
+			env = p.env and utils.envVariables2ConfigEnv(p.env) or nil,
+			stdout = function(err, data)
+				if data then
+					terminal.output = terminal.output .. data
+				end
+				if p.outputByteLimit then
+					terminal.output = terminal.output:sub(-p.outputByteLimit)
+					terminal.truncated = true
+				end
+			end,
+		}, function(exit)
+			terminal.exitStatus = {
+				code = exit.code,
+				signal = utils.get_signal_name(exit.signal),
+			}
+			if terminal.on_exit then
+				terminal.on_exit(terminal.exitStatus)
+			end
+		end)
+
+		terminal.instance = instance
+
+		response({ terminalId = term_id })
+	end,
+
+	---@param p acp.TerminalOutputRequest
+	---@param response fun(result: acp.TerminalOutputResponse?, error: acp.rpc.Error?)
+	[client_methods.terminal_output] = function(buf, p, response)
+		local terminal = M.sessions[buf].terminals[p.terminalId]
+		if terminal then
+			response({
+				output = terminal.output,
+				truncated = terminal.truncated,
+				exitStatus = terminal.exitStatus,
+			})
+		else
+			response(nil, { code = -32601, message = "Terminal not found: " .. p.terminalId })
+		end
+	end,
+
+	---@param p acp.WaitForTerminalExitRequest
+	---@param response fun(result: acp.TerminalExitStatus?, error: acp.rpc.Error?)
+	[client_methods.terminal_wait_for_exit] = function(buf, p, response)
+		local terminal = M.sessions[buf].terminals[p.terminalId]
+		terminal.on_exit = function()
+			response(terminal.exitStatus)
+		end
+	end,
+
+	---@param p acp.KillTerminalCommandRequest
+	---@param response fun(result: {}, error: acp.rpc.Error?)
+	[client_methods.terminal_kill] = function(buf, p, response)
+		local terminal = M.sessions[buf].terminals[p.terminalId]
+		if terminal then
+			if not terminal.instance:is_closing() then
+				terminal.instance:kill("sigterm")
+			end
+			M.sessions[buf].terminals[p.terminalId] = nil
+			response({})
+		else
+			response(nil, { code = -32601, message = "Terminal not found: " .. p.terminalId })
+		end
+	end,
+
+	---@param p acp.ReleaseTerminalRequest
+	---@param response fun(result: {}, error: acp.rpc.Error?)
+	[client_methods.terminal_release] = function(buf, p, response)
+		local terminal = M.sessions[buf].terminals[p.terminalId]
+		if terminal then
+			if not terminal.instance:is_closing() then
+				terminal.instance:kill("sigterm")
+			end
+			M.sessions[buf].terminals[p.terminalId] = nil
+			response({})
+		else
+			response(nil, { code = -32601, message = "Terminal not found: " .. p.terminalId })
+		end
+	end,
+
+	[client_methods.session_update] = function(buf, params)
 		local p = params
 		local u = p.update
-		local buf = utils.get_acp_buf(agent, p.sessionId, "chat")
-		if not buf then
-			return
-		end
 
 		local session = M.sessions[buf]
 
@@ -192,7 +280,7 @@ local function handle_notification(agent, method, params)
 
 			utils.add_output(buf, table.concat(lines, "\n") .. "\n")
 
-			local plan_buf = utils.get_acp_buf(agent, p.sessionId, "plan", true) --[[@as integer]]
+			local plan_buf = utils.get_acp_buf(session.agent_name, p.sessionId, "plan", true) --[[@as integer]]
 			api.nvim_buf_set_lines(plan_buf, 0, -1, false, lines)
 		elseif u.sessionUpdate == "agent_thought_chunk" then
 			local content = u.content
@@ -206,6 +294,38 @@ local function handle_notification(agent, method, params)
 		elseif u.sessionUpdate == "available_commands_update" then
 			session.available_commands = u.availableCommands
 		end
+	end,
+}
+
+---@param agent string
+---@param method string
+---@param params acp.RequestPermissionRequest|acp.ReadTextFileRequest|acp.WriteTextFileRequest
+---@param response fun(result: any?, error: acp.rpc.Error?)
+local function handle_server_request(agent, method, params, response)
+	local buf = utils.get_acp_buf(agent, params.sessionId, "chat")
+
+	if not buf then
+		response(nil, { code = rpc.code.internal_error, message = "Session buffer not found for agent: " .. agent })
+		return
+	end
+
+	if handlers[method] then
+		handlers[method](buf, params, response)
+	else
+		response(nil, { code = rpc.code.method_not_found, message = "Method not found: " .. method })
+	end
+end
+
+---@param agent string
+---@param method string
+---@param params any
+local function handle_notification(agent, method, params)
+	local buf = utils.get_acp_buf(agent, params.sessionId, "chat")
+	if not buf then
+		return
+	end
+	if handlers[method] then
+		handlers[method](buf, params)
 	end
 end
 
@@ -251,7 +371,7 @@ local function start_agent(agent_name, callback)
 		protocolVersion = meta.version,
 		clientCapabilities = {
 			fs = { readTextFile = true, writeTextFile = true },
-			terminal = false,
+			terminal = true,
 		},
 		clientInfo = {
 			name = "acp.nvim",
@@ -290,6 +410,7 @@ function M.create_or_load_session(agent_name, session_id)
 		pending_attachments = {},
 		lastest_diff = nil,
 		available_commands = {},
+		terminals = {},
 	}
 
 	local function setup_chatbuf()
