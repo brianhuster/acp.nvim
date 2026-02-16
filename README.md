@@ -7,7 +7,7 @@ NOTE: this plugin is in early development. Use at your own risk
 ## Requirements
 
 - Neovim >= 0.12
-- An ACP-compatible agent installed (e.g., `opencode`)
+- An agent that supports ACP. See list of ACP-compatible agents [here](https://agentclientprotocol.com/get-started/agents)
 
 ## Installation
 

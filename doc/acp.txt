@@ -19,7 +19,9 @@ See https://agentclientprotocol.com for more details about the protocol.
 2. Configuration                                          *acp-configuration*
 
 This plugin only ships the client, not any agents. You need to install an ACP
-agent separately (e.g., `opencode`).
+agent separately (e.g., `opencode`). See
+https://agentclientprotocol.com/get-started/agents for a list of agents that
+support ACP
 
 To configure the plugin, you need to call function
 `require("acp").config()` in your |config|. This function accept a table
