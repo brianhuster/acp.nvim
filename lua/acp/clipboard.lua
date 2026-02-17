@@ -139,33 +139,33 @@ end
 
 vim.paste = (function(overridden)
 	return function(lines, phase)
-		local bufnr = vim.api.nvim_get_current_buf()
-		local session = require("acp.core").sessions[bufnr]
-		local utils = require("acp.utils")
+		local buf = vim.api.nvim_get_current_buf()
+		local session = require("acp.core").sessions[buf]
 
-		if session and vim.bo[bufnr].filetype == "acpchat" then
+		if (phase == 1 or phase == -1) and session and vim.bo[buf].filetype == "acpchat" then
+			local utils = require("acp.utils")
 			local prompt_cap = session.client.agentCapabilities.promptCapabilities or {}
 			local data = M.get_data()
 			if data then
 				if data.type == "image" then
 					if not prompt_cap.image then
 						return utils.add_output(
-							bufnr,
+							buf,
 							("\n[Agent %s does not support %s]\n"):format(session.agent_name, data.type)
 						)
 					end
 					table.insert(session.pending_attachments, data)
-					utils.add_output(bufnr, "\n[Attached image from clipboard]\n")
-				else
+					utils.add_output(buf, "\n[Attached image from clipboard]\n")
+					return false
+				else -- data is a list of urls
 					for _, path in ipairs(data) do
-						require("acp").add_resource(bufnr, vim.uri_to_fname(path))
-						utils.add_output(bufnr, ("\n[Attached file: %s]\n"):format(path))
+						require("acp").add_resource(buf, vim.uri_to_fname(path))
+						utils.add_output(buf, ("\n[Attached file: %s]\n"):format(path))
 					end
+					return false
 				end
-				return
 			end
 		end
-
 		return overridden(lines, phase)
 	end
 end)(vim.paste)
