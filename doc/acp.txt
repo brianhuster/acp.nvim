@@ -133,6 +133,19 @@ subcommands:
     (Buffer-local, only available if there is a diff to view) View the latest
     diff from the session.
 
+:Acp paste ~
+    Paste contents from clipboard into the current buffer. This also supports
+    pasting images and files to |acp| buffers if the agent supports
+    corresponding capabilities.
+
+    As clipboard data often have many representations, including a text one,
+    in most cases you can also just use your system |paste| to paste
+    images/files into the chat buffer, |acp.nvim| will detect and handle them
+    just like when you paste via `:Acp paste`. However, this may not work if
+    the clipboard data does not have a text representation, in which case the
+    terminal-emulator or GUI won't send the paste event to Nvim. So using
+    `:Acp paste` is more reliable for pasting images/files.
+
 To run checkhealth for this plugin, use `:checkhealth acp`. This is useful to
 debug issues with this plugin
 
@@ -186,19 +199,6 @@ in the start of user input. To get autocompletion when you type `/`, you need
 to use enable |lsp-completion| or use an auto-completion plugin like
 `blink.cmp`. You can also trigger completion manually with |i_CTRL-X_CTRL-O|.
 - Signature Help can be triggered with |i_CTRL-S|
-
-PASTING IMAGES ~
-
-If the agent supports it, you can |paste| images directly into the chat
-buffer. Note that |paste| is different from |put|, see |paste| document for
-details
-
-PASTING FILES ~
-
-Similar to pasting images, you can also copy files paths from your file
-explorer (Dolphin, Finder, etc) and paste them into the chat buffer. The
-plugin will automatically add these files as `resource` or `resource_link` for
-the next prompt, depending on the agent's capabilities.
 
 ==============================================================================
 5. Extend acp.nvim                                  *acp-expend* *acp-api*

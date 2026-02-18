@@ -1,6 +1,6 @@
-local command = vim.api.nvim_create_user_command
+local api = vim.api
 
-command("Acp", function(opts)
+api.nvim_create_user_command("Acp", function(opts)
 	require("acp.core").ex(opts.fargs)
 end, {
 	nargs = "+",
@@ -8,7 +8,7 @@ end, {
 	complete = "custom,v:lua.require'acp.core'.ex_complete",
 })
 
-vim.api.nvim_create_autocmd("BufReadCmd", {
+api.nvim_create_autocmd("BufReadCmd", {
 	pattern = "acp://**",
 	callback = function(a)
 		if require("acp.core").sessions[a.buf] then
