@@ -23,7 +23,7 @@ def vim():
     utils.clean()
 
 
-prompt = '\x1b]133;A\x07'
+prompt = '▶'
 
 
 def test_cmdline_completion(vim: Nvim):
@@ -57,7 +57,7 @@ def test_read(vim: Nvim):
 
     lines = vim.api.buf_get_lines(0, 0, -1, False)
     assert lines == [
-            '\x1b]133;A\x07 /test_read',
+            f'{prompt} /test_read',
             '',
             '🤖 I\'ll read the file "test-read.txt" for you using the file system client.',
             '🔧 Reading test-read.txt (pending)',
@@ -66,7 +66,7 @@ def test_read(vim: Nvim):
             '  1. Allow reading',
             '  2. Reject',
             'Type number to choose: ',
-            '\x1b]133;A\x07 1',
+            f'{prompt} 1',
             '[Permission granted: Allow reading]',
             f'[Read {os.path.abspath("Xtest/test-read.txt")} (17 bytes)]',
             '',
@@ -79,11 +79,11 @@ def test_read(vim: Nvim):
             '(End of file - total 3 lines)',
             '</file> Successfully read the file!',
             '',
-            '\x1b]133;A\x07 /test_text',
+            f'{prompt} /test_text',
             '',
             '🤖 This is a simple text response for testing. No file operations needed!',
             '',
-            '\x1b]133;A\x07 ']
+            f'{prompt} ']
 
 
 @pytest.mark.flaky(reruns=3)
@@ -123,7 +123,7 @@ def test_load_session(vim: Nvim):
             f"{prompt} I'm fine, thank you. And you?",
             '',
             'Fine, thanks',
-            '\x1b]133;A\x07 ',
+            f'{prompt} ',
     ]
 
 
@@ -137,7 +137,7 @@ def test_agent_plan(vim: Nvim):
 
     lines = vim.api.buf_get_lines(0, 0, -1, False)
     assert lines == [
-        '\x1b]133;A\x07 /test_plan',
+        f'{prompt} /test_plan',
         '',
         '🤖 [Plan updated]',
         '⏳ [HIGH] Analyze the existing codebase structure',
@@ -145,7 +145,7 @@ def test_agent_plan(vim: Nvim):
         '⏳ [MEDIUM] Create unit tests for critical functions',
         '',
         '',
-        '\x1b]133;A\x07 ',
+        f'{prompt} ',
     ]
 
     vim.command("Acp view-plan")

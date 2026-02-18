@@ -21,5 +21,3 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
 		require("acp.core").create_or_load_session(agent, sessionId)
 	end,
 })
-
-vim.treesitter.language.register("markdown", "acpchat")
