@@ -1,5 +1,9 @@
 local M = {}
 
+local file_path = debug.getinfo(1, "S").source:sub(2)
+local dirname = vim.fs.dirname
+local dir_path = dirname(dirname(dirname(file_path)))
+
 ---@param opts acp.Config
 M.config = function(opts)
 	require("acp.config").set(opts)
@@ -26,6 +30,15 @@ M.register_subcommand = function(name, opts)
 	-- name must start with non-alphanumeric character
 	assert(name:match("^[^%w]"), "Subcommand name must start with a non-alphanumeric character")
 	require("acp.core").ex_subcmd[name] = opts
+end
+
+---@return string[]
+M.get_mcp_server_cmd = function()
+	return {
+		vim.v.progpath,
+		"-l",
+		vim.fs.joinpath(dir_path, "nvim-mcp-server.lua"),
+	}
 end
 
 return M

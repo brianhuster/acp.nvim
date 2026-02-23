@@ -18,3 +18,6 @@ lint:
 
 format:
 	stylua .
+
+inspect-mcp:
+	npx @modelcontextprotocol/inspector nvim -l nvim-mcp-server.lua

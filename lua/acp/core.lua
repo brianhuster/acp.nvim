@@ -802,12 +802,12 @@ M.ex_subcmd = {
 		condition = function()
 			return vim.bo.filetype == "acpchat"
 		end,
-    },
-    paste = {
+	},
+	paste = {
 		callback = function()
 			api.nvim_paste(vim.fn.getreg("+"), false, -1)
-		end
-	}
+		end,
+	},
 }
 
 setmetatable(M.ex_subcmd, {
@@ -822,13 +822,13 @@ setmetatable(M.ex_subcmd, {
 ---@return string
 function M.ex_complete(arg_lead, cmd_line, cursor_pos)
 	local cmd = api.nvim_parse_cmd(cmd_line:sub(1, cursor_pos), {})
-    local args = cmd.args or {}
+	local args = cmd.args or {}
 	local result = ""
 	if #args == 0 or (#args == 1 and arg_lead ~= "") then
 		local candidates = iter(vim.tbl_keys(M.ex_subcmd)):filter(function(sub)
 			return M.ex_subcmd[sub].condition == nil or M.ex_subcmd[sub].condition()
-        end):totable()
-        table.sort(candidates)
+		end):totable()
+		table.sort(candidates)
 		result = table.concat(candidates, "\n")
 	elseif #args == 1 or (#args == 2 and arg_lead ~= "") then
 		local subcmd = args[1]
