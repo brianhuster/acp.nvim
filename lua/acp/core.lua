@@ -42,7 +42,7 @@ local handlers = {
 
 		-- Store request context in the session
 		session.pending_permission = { options = options, response = response }
-		vim.b.acp_requesting_permission = true
+		vim.b[buf].acp_requesting_permission = true
 
 		local lines = { "\n⚠️ Permission required: " .. title }
 		for i, o in ipairs(options) do
@@ -473,8 +473,6 @@ function M.create_or_load_session(agent_name, session_id)
 				table.insert(filtered_mcp, srv)
 			end
 		end
-
-		vim.print(filtered_mcp)
 
 		local method = session_id and agent_methods.session_load or agent_methods.session_new
 
