@@ -62,14 +62,16 @@ function M.configMcp2McpServer(mcp_config)
 				name = name,
 				command = config.cmd[1],
 				args = vim.list_slice(config.cmd, 2),
-				env = config.env and M.configEnv2EnvVariables(config.env) or nil,
+                env = config.env and M.configEnv2EnvVariables(config.env) or nil,
+				type = "stdio"
 			})
 		elseif config.url then
 			table.insert(result, {
 				name = name,
 				url = config.url,
 				headers = config.headers and M.configHttpHeaders2HttpHeaderList(config.headers) or nil,
-				env = config.env and M.configEnv2EnvVariables(config.env) or nil,
+                env = config.env and M.configEnv2EnvVariables(config.env) or nil,
+				type = config.type or "http"
 			})
 		end
 	end

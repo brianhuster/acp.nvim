@@ -5,7 +5,7 @@ import shutil
 def init_env():
     xdg_config_home = "Xtest/xdg/config"
     xdg_data_home = "Xtest/xdg/share"
-    tmpdir = "Xtest/tmp"
+    tmpdir = "Xtest/tmp" 
     os.environ["XDG_CONFIG_HOME"] = xdg_config_home
     os.environ["XDG_DATA_HOME"] = xdg_data_home
     os.environ["TMPDIR"] = tmpdir

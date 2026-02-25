@@ -7,7 +7,7 @@
 ---@alias acp.config.HttpHeader table<string, string>
 
 ---@alias acp.config.mcp.Stdio { cmd: string[], env?: acp.config.Env }
----@alias acp.config.mcp.Http { url: string, headers?: acp.config.HttpHeader, env?: acp.config.Env }
+---@alias acp.config.mcp.Http { url: string, headers?: acp.config.HttpHeader, env?: acp.config.Env, type?: "stdio"|"http"|"sse" }
 ---@alias acp.config.Mcp table<string, acp.config.mcp.Stdio | acp.config.mcp.Http>
 
 ---@class acp.Config

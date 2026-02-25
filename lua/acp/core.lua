@@ -474,6 +474,8 @@ function M.create_or_load_session(agent_name, session_id)
 			end
 		end
 
+		vim.print(filtered_mcp)
+
 		local method = session_id and agent_methods.session_load or agent_methods.session_new
 
 		client.request(method, {
