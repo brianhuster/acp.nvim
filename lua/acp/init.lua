@@ -32,13 +32,4 @@ M.register_subcommand = function(name, opts)
 	require("acp.core").ex_subcmd[name] = opts
 end
 
----@return string[]
-M.get_mcp_server_cmd = function()
-	return {
-		vim.v.progpath,
-		"-l",
-		vim.fs.joinpath(dir_path, "nvim-mcp-server.lua"),
-	}
-end
-
 return M
