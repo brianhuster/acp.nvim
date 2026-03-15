@@ -7,7 +7,6 @@ schema:
 	curl $(ACP_LINK)meta.json -o schema/meta.json
 	nvim -l scripts/convert_schema.lua
 	nvim -l scripts/convert_meta.lua
-	make format
 
 test:
 	uv sync
