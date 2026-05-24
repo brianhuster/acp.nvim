@@ -4,12 +4,16 @@ return {
 	agentMethods = {
 		authenticate = "authenticate",
 		initialize = "initialize",
+		logout = "logout",
 		session_cancel = "session/cancel",
+		session_close = "session/close",
+		session_list = "session/list",
 		session_load = "session/load",
 		session_new = "session/new",
 		session_prompt = "session/prompt",
+		session_resume = "session/resume",
 		session_set_config_option = "session/set_config_option",
-		session_set_mode = "session/set_mode",
+		session_set_mode = "session/set_mode"
 	},
 	clientMethods = {
 		fs_read_text_file = "fs/read_text_file",
@@ -20,7 +24,7 @@ return {
 		terminal_kill = "terminal/kill",
 		terminal_output = "terminal/output",
 		terminal_release = "terminal/release",
-		terminal_wait_for_exit = "terminal/wait_for_exit",
+		terminal_wait_for_exit = "terminal/wait_for_exit"
 	},
-	version = 1,
+	version = 1
 }

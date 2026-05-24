@@ -1,5 +1,27 @@
 {
   "$defs": {
+    "AgentAuthCapabilities": {
+      "description": "Authentication-related capabilities supported by the agent.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "logout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LogoutCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the agent supports the logout method.\n\nBy supplying `{}` it means that the agent supports the logout method."
+        }
+      },
+      "type": "object"
+    },
     "AgentCapabilities": {
       "description": "Capabilities supported by the agent.\n\nAdvertised during initialization to inform the client about\navailable features and content types.\n\nSee protocol docs: [Agent Capabilities](https://agentclientprotocol.com/protocol/initialization#agent-capabilities)",
       "properties": {
@@ -7,6 +29,15 @@
           "additionalProperties": true,
           "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
           "type": ["object", "null"]
+        },
+        "auth": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/AgentAuthCapabilities"
+            }
+          ],
+          "default": {},
+          "description": "Authentication-related capabilities supported by the agent."
         },
         "loadSession": {
           "default": false,
@@ -77,7 +108,7 @@
                   "title": "ExtNotification"
                 }
               ],
-              "description": "All possible notifications that an agent can send to a client.\n\nThis enum is used internally for routing RPC notifications. You typically won't need\nto use this directly - use the notification methods on the [`Client`] trait instead.\n\nNotifications do not expect a response."
+              "description": "All possible notifications that an agent can send to a client.\n\nThis enum is used internally for routing RPC notifications. You typically won't need\nto use this directly.\n\nNotifications do not expect a response."
             },
             {
               "type": "null"
@@ -167,11 +198,11 @@
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/KillTerminalCommandRequest"
+                      "$ref": "#/$defs/KillTerminalRequest"
                     }
                   ],
-                  "description": "Kills the terminal command without releasing the terminal\n\nWhile `terminal/release` will also kill the command, this method will keep\nthe `TerminalId` valid so it can be used with other methods.\n\nThis method can be helpful when implementing command timeouts which terminate\nthe command as soon as elapsed, and then get the final output so it can be sent\nto the model.\n\nNote: `terminal/release` when `TerminalId` is no longer needed.\n\nSee protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)",
-                  "title": "KillTerminalCommandRequest"
+                  "description": "Kills the terminal command without releasing the terminal\n\nWhile `terminal/release` will also kill the command, this method will keep\nthe `TerminalId` valid so it can be used with other methods.\n\nThis method can be helpful when implementing command timeouts which terminate\nthe command as soon as elapsed, and then get the final output so it can be sent\nto the model.\n\nNote: Call `terminal/release` when `TerminalId` is no longer needed.\n\nSee protocol docs: [Terminals](https://agentclientprotocol.com/protocol/terminals)",
+                  "title": "KillTerminalRequest"
                 },
                 {
                   "allOf": [
@@ -183,7 +214,7 @@
                   "title": "ExtMethodRequest"
                 }
               ],
-              "description": "All possible requests that an agent can send to a client.\n\nThis enum is used internally for routing RPC requests. You typically won't need\nto use this directly - instead, use the methods on the [`Client`] trait.\n\nThis enum encompasses all method calls from agent to client."
+              "description": "All possible requests that an agent can send to a client.\n\nThis enum is used internally for routing RPC requests. You typically won't need\nto use this directly.\n\nThis enum encompasses all method calls from agent to client."
             },
             {
               "type": "null"
@@ -223,6 +254,14 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/LogoutResponse"
+                    }
+                  ],
+                  "title": "LogoutResponse"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/NewSessionResponse"
                     }
                   ],
@@ -235,6 +274,30 @@
                     }
                   ],
                   "title": "LoadSessionResponse"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/ListSessionsResponse"
+                    }
+                  ],
+                  "title": "ListSessionsResponse"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/ResumeSessionResponse"
+                    }
+                  ],
+                  "title": "ResumeSessionResponse"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/CloseSessionResponse"
+                    }
+                  ],
+                  "title": "CloseSessionResponse"
                 },
                 {
                   "allOf": [
@@ -345,7 +408,21 @@
       "type": "object"
     },
     "AuthMethod": {
-      "description": "Describes an available authentication method.",
+      "anyOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/AuthMethodAgent"
+            }
+          ],
+          "description": "Agent handles authentication itself.\n\nThis is the default when no `type` is specified.",
+          "title": "agent"
+        }
+      ],
+      "description": "Describes an available authentication method.\n\nThe `type` field acts as the discriminator in the serialized JSON form.\nWhen no `type` is present, the method is treated as `agent`."
+    },
+    "AuthMethodAgent": {
+      "description": "Agent handles authentication itself.\n\nThis is the default authentication method type.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -517,7 +594,7 @@
         "fs": {
           "allOf": [
             {
-              "$ref": "#/$defs/FileSystemCapability"
+              "$ref": "#/$defs/FileSystemCapabilities"
             }
           ],
           "default": {
@@ -562,7 +639,7 @@
                   "title": "ExtNotification"
                 }
               ],
-              "description": "All possible notifications that a client can send to an agent.\n\nThis enum is used internally for routing RPC notifications. You typically won't need\nto use this directly - use the notification methods on the [`Agent`] trait instead.\n\nNotifications do not expect a response."
+              "description": "All possible notifications that a client can send to an agent.\n\nThis enum is used internally for routing RPC notifications. You typically won't need\nto use this directly.\n\nNotifications do not expect a response."
             },
             {
               "type": "null"
@@ -607,6 +684,15 @@
                 {
                   "allOf": [
                     {
+                      "$ref": "#/$defs/LogoutRequest"
+                    }
+                  ],
+                  "description": "Logs out of the current authenticated state.\n\nAfter a successful logout, all new sessions will require authentication.\nThere is no guarantee about the behavior of already running sessions.",
+                  "title": "LogoutRequest"
+                },
+                {
+                  "allOf": [
+                    {
                       "$ref": "#/$defs/NewSessionRequest"
                     }
                   ],
@@ -621,6 +707,33 @@
                   ],
                   "description": "Loads an existing session to resume a previous conversation.\n\nThis method is only available if the agent advertises the `loadSession` capability.\n\nThe agent should:\n- Restore the session context and conversation history\n- Connect to the specified MCP servers\n- Stream the entire conversation history back to the client via notifications\n\nSee protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)",
                   "title": "LoadSessionRequest"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/ListSessionsRequest"
+                    }
+                  ],
+                  "description": "Lists existing sessions known to the agent.\n\nThis method is only available if the agent advertises the `sessionCapabilities.list` capability.\n\nThe agent should return metadata about sessions with optional filtering and pagination support.",
+                  "title": "ListSessionsRequest"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/ResumeSessionRequest"
+                    }
+                  ],
+                  "description": "Resumes an existing session without returning previous messages.\n\nThis method is only available if the agent advertises the `sessionCapabilities.resume` capability.\n\nThe agent should resume the session context, allowing the conversation to continue\nwithout replaying the message history (unlike `session/load`).",
+                  "title": "ResumeSessionRequest"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/CloseSessionRequest"
+                    }
+                  ],
+                  "description": "Closes an active session and frees up any resources associated with it.\n\nThis method is only available if the agent advertises the `sessionCapabilities.close` capability.\n\nThe agent must cancel any ongoing work (as if `session/cancel` was called)\nand then free up any resources associated with the session.",
+                  "title": "CloseSessionRequest"
                 },
                 {
                   "allOf": [
@@ -659,7 +772,7 @@
                   "title": "ExtMethodRequest"
                 }
               ],
-              "description": "All possible requests that a client can send to an agent.\n\nThis enum is used internally for routing RPC requests. You typically won't need\nto use this directly - instead, use the methods on the [`Agent`] trait.\n\nThis enum encompasses all method calls from client to agent."
+              "description": "All possible requests that a client can send to an agent.\n\nThis enum is used internally for routing RPC requests. You typically won't need\nto use this directly.\n\nThis enum encompasses all method calls from client to agent."
             },
             {
               "type": "null"
@@ -739,7 +852,7 @@
                 {
                   "allOf": [
                     {
-                      "$ref": "#/$defs/KillTerminalCommandResponse"
+                      "$ref": "#/$defs/KillTerminalResponse"
                     }
                   ],
                   "title": "KillTerminalResponse"
@@ -775,6 +888,41 @@
         }
       ],
       "x-docs-ignore": true
+    },
+    "CloseSessionRequest": {
+      "description": "Request parameters for closing an active session.\n\nIf supported, the agent **must** cancel any ongoing work related to the session\n(treat it as if `session/cancel` was called) and then free up any resources\nassociated with the session.\n\nOnly available if the Agent supports the `sessionCapabilities.close` capability.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "sessionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            }
+          ],
+          "description": "The ID of the session to close."
+        }
+      },
+      "required": ["sessionId"],
+      "type": "object",
+      "x-method": "session/close",
+      "x-side": "agent"
+    },
+    "CloseSessionResponse": {
+      "description": "Response from closing a session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "session/close",
+      "x-side": "agent"
     },
     "ConfigOptionUpdate": {
       "description": "Session configuration options have been updated.",
@@ -1192,8 +1340,8 @@
     "ExtResponse": {
       "description": "Allows for sending an arbitrary response to an [`ExtRequest`] that is not part of the ACP spec.\nExtension methods provide a way to add custom functionality while maintaining\nprotocol compatibility.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)"
     },
-    "FileSystemCapability": {
-      "description": "Filesystem capabilities supported by the client.\nFile system capabilities that a client may support.\n\nSee protocol docs: [FileSystem](https://agentclientprotocol.com/protocol/initialization#filesystem)",
+    "FileSystemCapabilities": {
+      "description": "File system capabilities that a client may support.\n\nSee protocol docs: [FileSystem](https://agentclientprotocol.com/protocol/initialization#filesystem)",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -1351,6 +1499,7 @@
             }
           ],
           "default": {
+            "auth": {},
             "loadSession": false,
             "mcpCapabilities": {
               "http": false,
@@ -1398,8 +1547,8 @@
       "x-method": "initialize",
       "x-side": "agent"
     },
-    "KillTerminalCommandRequest": {
-      "description": "Request to kill a terminal command without releasing the terminal.",
+    "KillTerminalRequest": {
+      "description": "Request to kill a terminal without releasing it.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -1424,8 +1573,8 @@
       "x-method": "terminal/kill",
       "x-side": "client"
     },
-    "KillTerminalCommandResponse": {
-      "description": "Response to terminal/kill command method",
+    "KillTerminalResponse": {
+      "description": "Response to `terminal/kill` method",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -1436,6 +1585,52 @@
       "type": "object",
       "x-method": "terminal/kill",
       "x-side": "client"
+    },
+    "ListSessionsRequest": {
+      "description": "Request parameters for listing existing sessions.\n\nOnly available if the Agent supports the `sessionCapabilities.list` capability.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "cursor": {
+          "description": "Opaque cursor token from a previous response's nextCursor field for cursor-based pagination",
+          "type": ["string", "null"]
+        },
+        "cwd": {
+          "description": "Filter sessions by working directory. Must be an absolute path.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "session/list",
+      "x-side": "agent"
+    },
+    "ListSessionsResponse": {
+      "description": "Response from listing sessions.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "nextCursor": {
+          "description": "Opaque cursor token. If present, pass this in the next request's cursor parameter\nto fetch the next page. If absent, there are no more results.",
+          "type": ["string", "null"]
+        },
+        "sessions": {
+          "description": "Array of session information objects",
+          "items": {
+            "$ref": "#/$defs/SessionInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["sessions"],
+      "type": "object",
+      "x-method": "session/list",
+      "x-side": "agent"
     },
     "LoadSessionRequest": {
       "description": "Request parameters for loading an existing session.\n\nOnly available if the Agent supports the `loadSession` capability.\n\nSee protocol docs: [Loading Sessions](https://agentclientprotocol.com/protocol/session-setup#loading-sessions)",
@@ -1499,6 +1694,43 @@
       },
       "type": "object",
       "x-method": "session/load",
+      "x-side": "agent"
+    },
+    "LogoutCapabilities": {
+      "description": "Logout capabilities supported by the agent.\n\nBy supplying `{}` it means that the agent supports the logout method.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "LogoutRequest": {
+      "description": "Request parameters for the logout method.\n\nTerminates the current authenticated session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "logout",
+      "x-side": "agent"
+    },
+    "LogoutResponse": {
+      "description": "Response to the `logout` method.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object",
+      "x-method": "logout",
       "x-side": "agent"
     },
     "McpCapabilities": {
@@ -2067,7 +2299,7 @@
           "type": "string"
         }
       ],
-      "description": "JSON RPC Request Id\n\nAn identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null [1] and Numbers SHOULD NOT contain fractional parts [2]\n\nThe Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.\n\n[1] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.\n\n[2] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions."
+      "description": "JSON RPC Request Id\n\nAn identifier established by the Client that MUST contain a String, Number, or NULL value if included. If it is not included it is assumed to be a notification. The value SHOULD normally not be Null \\[1\\] and Numbers SHOULD NOT contain fractional parts \\[2\\]\n\nThe Server MUST reply with the same value in the Response object if included. This member is used to correlate the context between the two objects.\n\n\\[1\\] The use of Null as a value for the id member in a Request object is discouraged, because this specification uses a value of Null for Responses with an unknown id. Also, because JSON-RPC 1.0 uses an id value of Null for Notifications this could cause confusion in handling.\n\n\\[2\\] Fractional parts may be problematic, since many decimal fractions cannot be represented exactly as binary fractions."
     },
     "RequestPermissionOutcome": {
       "description": "The outcome of a permission request.",
@@ -2204,6 +2436,70 @@
       "required": ["name", "uri"],
       "type": "object"
     },
+    "ResumeSessionRequest": {
+      "description": "Request parameters for resuming an existing session.\n\nResumes an existing session without returning previous messages (unlike `session/load`).\nThis is useful for agents that can resume sessions but don't implement full session loading.\n\nOnly available if the Agent supports the `sessionCapabilities.resume` capability.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "cwd": {
+          "description": "The working directory for this session.",
+          "type": "string"
+        },
+        "mcpServers": {
+          "description": "List of MCP servers to connect to for this session.",
+          "items": {
+            "$ref": "#/$defs/McpServer"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            }
+          ],
+          "description": "The ID of the session to resume."
+        }
+      },
+      "required": ["sessionId", "cwd"],
+      "type": "object",
+      "x-method": "session/resume",
+      "x-side": "agent"
+    },
+    "ResumeSessionResponse": {
+      "description": "Response from resuming an existing session.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "configOptions": {
+          "description": "Initial session configuration options if supported by the Agent.",
+          "items": {
+            "$ref": "#/$defs/SessionConfigOption"
+          },
+          "type": ["array", "null"]
+        },
+        "modes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionModeState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Initial mode state if supported by the Agent\n\nSee protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)"
+        }
+      },
+      "type": "object",
+      "x-method": "session/resume",
+      "x-side": "agent"
+    },
     "Role": {
       "description": "The sender or recipient of messages and data in a conversation.",
       "enum": ["assistant", "user"],
@@ -2231,6 +2527,50 @@
     },
     "SessionCapabilities": {
       "description": "Session capabilities supported by the agent.\n\nAs a baseline, all Agents **MUST** support `session/new`, `session/prompt`, `session/cancel`, and `session/update`.\n\nOptionally, they **MAY** support other session methods and notifications by specifying additional capabilities.\n\nNote: `session/load` is still handled by the top-level `load_session` capability. This will be unified in future versions of the protocol.\n\nSee protocol docs: [Session Capabilities](https://agentclientprotocol.com/protocol/initialization#session-capabilities)",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "close": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionCloseCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the agent supports `session/close`."
+        },
+        "list": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionListCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the agent supports `session/list`."
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionResumeCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the agent supports `session/resume`."
+        }
+      },
+      "type": "object"
+    },
+    "SessionCloseCapabilities": {
+      "description": "Capabilities for the `session/close` method.\n\nBy supplying `{}` it means that the agent supports closing of sessions.",
       "properties": {
         "_meta": {
           "additionalProperties": true,
@@ -2444,6 +2784,68 @@
       "description": "A unique identifier for a conversation session between a client and agent.\n\nSessions maintain their own context, conversation history, and state,\nallowing multiple independent interactions with the same agent.\n\nSee protocol docs: [Session ID](https://agentclientprotocol.com/protocol/session-setup#session-id)",
       "type": "string"
     },
+    "SessionInfo": {
+      "description": "Information about a session returned by session/list",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "cwd": {
+          "description": "The working directory for this session. Must be an absolute path.",
+          "type": "string"
+        },
+        "sessionId": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionId"
+            }
+          ],
+          "description": "Unique identifier for the session"
+        },
+        "title": {
+          "description": "Human-readable title for the session",
+          "type": ["string", "null"]
+        },
+        "updatedAt": {
+          "description": "ISO 8601 timestamp of last activity",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["sessionId", "cwd"],
+      "type": "object"
+    },
+    "SessionInfoUpdate": {
+      "description": "Update to session metadata. All fields are optional to support partial updates.\n\nAgents send this notification to update session information like title or custom metadata.\nThis allows clients to display dynamic session names and track session state changes.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        },
+        "title": {
+          "description": "Human-readable title for the session. Set to null to clear.",
+          "type": ["string", "null"]
+        },
+        "updatedAt": {
+          "description": "ISO 8601 timestamp of last activity. Set to null to clear.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "SessionListCapabilities": {
+      "description": "Capabilities for the `session/list` method.\n\nBy supplying `{}` it means that the agent supports listing of sessions.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
+    },
     "SessionMode": {
       "description": "A mode the agent can operate in.\n\nSee protocol docs: [Session Modes](https://agentclientprotocol.com/protocol/session-modes)",
       "properties": {
@@ -2525,6 +2927,17 @@
       "type": "object",
       "x-method": "session/update",
       "x-side": "client"
+    },
+    "SessionResumeCapabilities": {
+      "description": "Capabilities for the `session/resume` method.\n\nBy supplying `{}` it means that the agent supports resuming of sessions.",
+      "properties": {
+        "_meta": {
+          "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
+          "type": ["object", "null"]
+        }
+      },
+      "type": "object"
     },
     "SessionUpdate": {
       "description": "Different types of updates that can be sent during session processing.\n\nThese updates provide real-time feedback about the agent's progress.\n\nSee protocol docs: [Agent Reports Output](https://agentclientprotocol.com/protocol/prompt-turn#3-agent-reports-output)",
@@ -2675,6 +3088,22 @@
           },
           "required": ["sessionUpdate"],
           "type": "object"
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SessionInfoUpdate"
+            }
+          ],
+          "description": "Session metadata has been updated (title, timestamps, custom metadata)",
+          "properties": {
+            "sessionUpdate": {
+              "const": "session_info_update",
+              "type": "string"
+            }
+          },
+          "required": ["sessionUpdate"],
+          "type": "object"
         }
       ]
     },
@@ -2772,6 +3201,7 @@
       "properties": {
         "_meta": {
           "additionalProperties": true,
+          "description": "The _meta property is reserved by ACP to allow clients and agents to attach additional\nmetadata to their interactions. Implementations MUST NOT make assumptions about values at\nthese keys.\n\nSee protocol docs: [Extensibility](https://agentclientprotocol.com/protocol/extensibility)",
           "type": ["object", "null"]
         }
       },
